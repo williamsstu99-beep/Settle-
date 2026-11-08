@@ -1,0 +1,21 @@
+/** Quiet grey basemap: white streets, pale water, no business pins. Used when no cloud Map ID is set. */
+export const MAP_STYLE: google.maps.MapTypeStyle[] = [
+  { elementType: "geometry", stylers: [{ color: "#eef0f3" }] },
+  { elementType: "labels.icon", stylers: [{ visibility: "off" }] },
+  { elementType: "labels.text.fill", stylers: [{ color: "#8f959f" }] },
+  { elementType: "labels.text.stroke", stylers: [{ color: "#eef0f3" }, { weight: 3 }] },
+  { featureType: "administrative", elementType: "geometry", stylers: [{ visibility: "off" }] },
+  { featureType: "administrative.locality", elementType: "labels.text.fill", stylers: [{ color: "#6f7580" }] },
+  { featureType: "administrative.neighborhood", elementType: "labels.text.fill", stylers: [{ color: "#a6abb4" }] },
+  { featureType: "poi", stylers: [{ visibility: "off" }] },
+  { featureType: "poi.park", elementType: "geometry", stylers: [{ visibility: "on" }, { color: "#e4e9e3" }] },
+  { featureType: "road", elementType: "geometry.fill", stylers: [{ color: "#ffffff" }] },
+  { featureType: "road", elementType: "geometry.stroke", stylers: [{ color: "#e1e4e9" }] },
+  { featureType: "road.highway", elementType: "geometry.fill", stylers: [{ color: "#ffffff" }] },
+  { featureType: "road.highway", elementType: "geometry.stroke", stylers: [{ color: "#d4d8de" }] },
+  { featureType: "road", elementType: "labels.text.fill", stylers: [{ color: "#a3a8b1" }] },
+  { featureType: "transit", stylers: [{ visibility: "off" }] },
+  { featureType: "transit.line", elementType: "geometry", stylers: [{ visibility: "on" }, { color: "#d5d8de" }] },
+  { featureType: "water", elementType: "geometry", stylers: [{ color: "#d9e4ed" }] },
+  { featureType: "water", elementType: "labels.text.fill", stylers: [{ color: "#9db2c4" }] },
+];
