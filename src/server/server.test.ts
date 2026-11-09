@@ -59,3 +59,14 @@ describe("helpers", () => {
     expect(oauthHeader("KEY", "SEC")).toBe('OAuth oauth_consumer_key="KEY", oauth_signature_method="PLAINTEXT", oauth_signature="SEC%26"');
   });
 });
+
+import { computeRoute } from "./google-routes";
+import { vi, afterEach } from "vitest";
+
+describe("Google errors", () => {
+  afterEach(() => vi.unstubAllGlobals());
+  it("carries Google's reason code so setup problems can be explained", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({ error: { code: 403, message: "Requests from referer <empty> are blocked.", status: "PERMISSION_DENIED", details: [{ reason: "API_KEY_HTTP_REFERRER_BLOCKED" }] } }), { status: 403 })));
+    await expect(computeRoute({ lat: 1, lng: 1 }, { lat: 2, lng: 2 }, "drive", dep, "k", "t1")).rejects.toMatchObject({ status: 403, message: "Requests from referer <empty> are blocked. (API_KEY_HTTP_REFERRER_BLOCKED)" });
+  });
+});
