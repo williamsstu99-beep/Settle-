@@ -8,6 +8,7 @@ import { decodePlan, encodePlan, EXAMPLE_PLAN, MAX_ANCHORS, MAX_OPTIONS, newId, 
 import type { Anchor, LatLng, Leg, Mode, Option } from "@/core/types";
 import { ANCHOR_ICONS, Icon, MODE_LABEL } from "./icons";
 import { PlaceSearch, type PickedPlace } from "./PlaceSearch";
+import type { Phase } from "./RouteLayer";
 
 const MapView = dynamic(() => import("./MapView"), { ssr: false });
 
@@ -48,6 +49,8 @@ export default function SettleApp() {
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const [fitKey, setFitKey] = useState("init");
+  const [replay, setReplay] = useState(0);
+  const [phaseState, setPhaseState] = useState<{ key: string; p: Phase }>({ key: "", p: null });
 
   const { anchors, options } = plan;
   const colorOf = useCallback((id: string) => OPTION_COLORS[Math.max(0, options.findIndex((o) => o.id === id)) % OPTION_COLORS.length], [options]);
@@ -99,6 +102,14 @@ export default function SettleApp() {
   }, [missing]);
 
   const cmp = useMemo(() => compare(options, anchors, legs), [options, anchors, legs]);
+
+  // The route animation starts only once every route is known, so it never waits on the network.
+  const ready = comparing && !missing.length && !loading;
+  const sig = `${options.map((o) => o.id).join(",")}|${anchors.map((a) => `${a.id}:${a.mode}`).join(",")}`;
+  const runKey = ready ? `${sig}#${replay}` : null;
+  const phase: Phase = runKey && phaseState.key === runKey ? phaseState.p : null;
+  const onPhase = useCallback((key: string, p: Phase) => setPhaseState({ key, p }), []);
+  const drawingId = typeof phase === "number" ? cmp.rows.filter((r) => r.legs.some((l) => l?.status === "ok"))[phase]?.option.id : undefined;
 
   /* ---------- actions ---------- */
   const addAnchorAt = (location: LatLng, name: string, address?: string) => {
@@ -264,11 +275,23 @@ export default function SettleApp() {
         <Icon name="back" size={14} />Back to your list
       </button>
       <div className="sec">Travel times · weekday 8am</div>
+      {runKey && (
+        <div className="status">
+          <span>
+            {typeof phase === "number"
+              ? `Drawing routes · ${phase + 1} of ${cmp.rows.filter((r) => r.legs.some((l) => l?.status === "ok")).length}`
+              : focus ? "Tap the home again to see them all" : "Tap a home to highlight its routes"}
+          </span>
+          {phase === "done" && (
+            <button onClick={() => { setFocus(null); setReplay((n) => n + 1); setFitKey(newId()); }}>Replay</button>
+          )}
+        </div>
+      )}
       {cmp.rows.map((r) => {
         const open = focus === r.option.id;
         const col = colorOf(r.option.id);
         return (
-          <div key={r.option.id} className={`card${open ? " open" : focus ? " dim" : ""}`} style={{ "--c": col } as React.CSSProperties}>
+          <div key={r.option.id} className={`card${open ? " open" : focus ? " dim" : drawingId === r.option.id ? " drawing" : ""}`} style={{ "--c": col } as React.CSSProperties}>
             <button className="ch" aria-expanded={open} onClick={() => toggleFocus(r.option.id)}>
               <span className="dot" />
               <span className="t">
@@ -352,6 +375,9 @@ export default function SettleApp() {
               focus={focus}
               fitKey={fitKey}
               dropMode={adding}
+              runKey={runKey}
+              phase={phase}
+              onPhase={onPhase}
               onOptionClick={onOptionClick}
               onAnchorClick={onAnchorClick}
               onMapClick={onMapClick}

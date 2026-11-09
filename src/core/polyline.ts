@@ -42,3 +42,32 @@ export function midpoint(path: LatLng[]): LatLng | undefined {
   }
   return path[path.length - 1];
 }
+
+/** A path prepared for drawing progressively: cumulative distance at each point. */
+export type Measured = { path: LatLng[]; cum: number[]; total: number };
+
+export function measure(path: LatLng[]): Measured {
+  const cum = [0];
+  for (let i = 1; i < path.length; i++) {
+    const a = path[i - 1], b = path[i];
+    const dy = b.lat - a.lat, dx = (b.lng - a.lng) * Math.cos(((a.lat + b.lat) / 2) * (Math.PI / 180));
+    cum.push(cum[i - 1] + Math.hypot(dx, dy));
+  }
+  return { path, cum, total: cum[cum.length - 1] ?? 0 };
+}
+
+/** The first `t` (0–1) of a path by distance, ending exactly at the interpolated point. */
+export function partialPath(m: Measured, t: number): LatLng[] {
+  if (m.path.length < 2 || t >= 1) return m.path;
+  if (t <= 0) return [m.path[0]];
+  const goal = m.total * t;
+  let i = 1;
+  while (i < m.cum.length && m.cum[i] < goal) i++;
+  const segLen = m.cum[i] - m.cum[i - 1];
+  const f = segLen ? (goal - m.cum[i - 1]) / segLen : 0;
+  const a = m.path[i - 1], b = m.path[i];
+  return [...m.path.slice(0, i), { lat: a.lat + (b.lat - a.lat) * f, lng: a.lng + (b.lng - a.lng) * f }];
+}
+
+/** Ease-in-out, so lines start gently and settle into the destination. */
+export const easeInOut = (t: number) => (t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2);
