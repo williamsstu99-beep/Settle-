@@ -53,11 +53,26 @@ export async function POST(request: Request) {
     });
     return Response.json({ departure: departure.toISOString(), legs });
   } catch (e) {
-    const status = e instanceof RoutesApiError ? e.status : 502;
     console.error("routes error", e);
-    return Response.json(
-      { error: status === 403 ? "Google refused the request. Check the Routes API is enabled for this key." : "Couldn't get travel times right now. Try again shortly." },
-      { status: status >= 500 || status === 403 ? 502 : status },
-    );
+    return Response.json(explainError(e), { status: 502 });
   }
+}
+
+/** Turn a Google failure into something the person setting this up can act on. Google's messages never contain the key. */
+function explainError(e: unknown): { error: string; detail?: string } {
+  if (!(e instanceof RoutesApiError)) return { error: "Couldn't reach Google for travel times. Try again shortly." };
+  const m = e.message;
+  if (/referer|referrer/i.test(m)) {
+    return { error: "Google blocked the server's request because the server key is restricted to websites. Use a separate server key restricted to the Routes API only (no website restriction).", detail: m };
+  }
+  if (/not been used|disabled|not enabled|SERVICE_DISABLED/i.test(m)) {
+    return { error: "The Routes API isn't enabled for this key's Google Cloud project. Enable it under APIs & Services → Library.", detail: m };
+  }
+  if (/not authorized|API_KEY_SERVICE_BLOCKED|restricted/i.test(m)) {
+    return { error: "This key isn't allowed to use the Routes API. Add Routes API to the key's API restrictions.", detail: m };
+  }
+  if (/invalid|API_KEY_INVALID/i.test(m)) return { error: "Google says the server key is invalid. Check GOOGLE_MAPS_SERVER_KEY in your hosting settings.", detail: m };
+  if (/billing/i.test(m)) return { error: "Google needs billing turned on for this project before it will return routes.", detail: m };
+  if (e.status === 429) return { error: "Google's rate limit was hit. Try again in a minute.", detail: m };
+  return { error: "Google couldn't return travel times.", detail: m };
 }

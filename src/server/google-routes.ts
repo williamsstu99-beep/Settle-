@@ -83,7 +83,9 @@ export async function computeRoute(
     const text = await res.text().catch(() => "");
     let msg = `Google Routes API returned ${res.status}`;
     try {
-      msg = JSON.parse(text)?.error?.message ?? msg;
+      const err = JSON.parse(text)?.error as { message?: string; status?: string; details?: { reason?: string }[] } | undefined;
+      const reason = err?.details?.find((d) => d.reason)?.reason;
+      msg = [err?.message ?? msg, reason ? `(${reason})` : err?.status ? `(${err.status})` : ""].filter(Boolean).join(" ");
     } catch {}
     // A mode Google can't serve in this region (e.g. bike in some countries) is "no route", not a failure.
     if (res.status === 400 && /not supported|unsupported|no route/i.test(msg)) {

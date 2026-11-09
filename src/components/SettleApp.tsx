@@ -84,7 +84,7 @@ export default function SettleApp() {
     })
       .then(async (r) => {
         const j = await r.json().catch(() => ({}));
-        if (!r.ok) throw new Error(j.error ?? "Couldn't get travel times right now.");
+        if (!r.ok) throw new Error([j.error ?? "Couldn't get travel times right now.", j.detail ? `Google said: ${j.detail}` : ""].filter(Boolean).join(" "));
         setLegs((prev) => {
           const next = new Map(prev);
           for (const l of j.legs as Leg[]) next.set(legKey(l.optionId, l.anchorId, l.mode), l);
