@@ -150,3 +150,22 @@ describe("share links", () => {
     expect(d.options).toHaveLength(1);
   });
 });
+
+import { easeInOut, measure, partialPath } from "./polyline";
+
+describe("progressive route drawing", () => {
+  const m = measure([{ lat: 0, lng: 0 }, { lat: 0, lng: 1 }, { lat: 0, lng: 3 }]);
+  it("cuts a path by distance, not by point count", () => {
+    expect(partialPath(m, 0.5)).toEqual([{ lat: 0, lng: 0 }, { lat: 0, lng: 1 }, { lat: 0, lng: 1.5 }]);
+    expect(partialPath(m, 0.25).at(-1)!.lng).toBeCloseTo(0.75);
+  });
+  it("returns the start at 0 and the whole path at 1", () => {
+    expect(partialPath(m, 0)).toEqual([{ lat: 0, lng: 0 }]);
+    expect(partialPath(m, 1)).toBe(m.path);
+  });
+  it("eases from 0 to 1", () => {
+    expect(easeInOut(0)).toBe(0);
+    expect(easeInOut(1)).toBe(1);
+    expect(easeInOut(0.5)).toBeCloseTo(0.5);
+  });
+});
