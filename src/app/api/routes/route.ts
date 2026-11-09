@@ -37,6 +37,13 @@ export async function POST(request: Request) {
     return Response.json({ error: "Too many comparisons in a short time. Try again in a minute." }, { status: 429 });
   }
 
+  if (!/^[\x21-\x7e]+$/.test(apiKey)) {
+    return Response.json(
+      { error: "GOOGLE_MAPS_SERVER_KEY isn't a real key: it contains dots or other symbols, usually from copying a hidden key. In Google Cloud click Show key, copy it (it starts with AIza), paste it into your hosting settings and redeploy." },
+      { status: 503 },
+    );
+  }
+
   let body: z.infer<typeof Body>;
   try {
     body = Body.parse(await request.json());
