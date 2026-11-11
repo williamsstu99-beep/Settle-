@@ -190,3 +190,28 @@ describe("share links keep mode choices", () => {
     expect(back.overrides).toEqual({ [`${o(1)}|${a(0)}`]: "drive", [`${o(2)}|${a(1)}`]: "walk" });
   });
 });
+
+import { ANCHOR_COLORS, anchorColor, nextAnchorColor } from "./plan";
+import { safePhoto } from "./sources/trademe";
+
+describe("place colours", () => {
+  it("assigns the next unused colour and keeps existing ones", () => {
+    expect(nextAnchorColor([])).toBe(ANCHOR_COLORS[0]);
+    expect(nextAnchorColor([{ color: ANCHOR_COLORS[0] }, { color: ANCHOR_COLORS[2] }])).toBe(ANCHOR_COLORS[1]);
+    expect(anchorColor({ color: "#123456" }, 5)).toBe("#123456");
+    expect(anchorColor({}, 1)).toBe(ANCHOR_COLORS[1]);
+  });
+  it("gives places from a share link their colours by position", () => {
+    const back = decodePlan(encodePlan(EXAMPLE_PLAN))!;
+    expect(back.anchors.map((a) => a.color)).toEqual(ANCHOR_COLORS.slice(0, 3));
+  });
+});
+
+describe("listing photos", () => {
+  it("accepts TradeMe image hosts over https only", () => {
+    expect(safePhoto("https://trademe.tmcdn.co.nz/photoserver/plus/123.jpg")).toBe("https://trademe.tmcdn.co.nz/photoserver/plus/123.jpg");
+    expect(safePhoto("http://trademe.tmcdn.co.nz/x.jpg")).toBeUndefined();
+    expect(safePhoto("https://evil.example.com/x.jpg")).toBeUndefined();
+    expect(safePhoto("javascript:alert(1)")).toBeUndefined();
+  });
+});
