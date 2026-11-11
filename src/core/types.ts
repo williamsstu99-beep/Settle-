@@ -27,6 +27,8 @@ export type Anchor = {
   location: LatLng;
   address?: string;
   mode: Mode;
+  /** Permanent colour for this place: its card, route lines and panel row. */
+  color?: string;
 };
 
 export type Price = {
@@ -51,6 +53,8 @@ export type Option = {
   bedrooms?: number;
   bathrooms?: number;
   propertyType?: string;
+  /** Listing photo URL, when the source has one. */
+  photo?: string;
 };
 
 export type Leg = {

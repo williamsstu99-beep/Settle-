@@ -4,11 +4,11 @@ import { APIProvider } from "@vis.gl/react-google-maps";
 import dynamic from "next/dynamic";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { compare, effectiveMode, formatPrice, legKey, pairKey, type LegView, type OptionSummary } from "@/core/compare";
-import { decodePlan, encodePlan, EXAMPLE_PLAN, MAX_ANCHORS, MAX_OPTIONS, newId, OPTION_COLORS, type Plan } from "@/core/plan";
+import { anchorColor, decodePlan, encodePlan, EXAMPLE_PLAN, MAX_ANCHORS, MAX_OPTIONS, newId, nextAnchorColor, OPTION_COLORS, type Plan } from "@/core/plan";
 import type { Anchor, LatLng, Leg, Mode, Option, Time } from "@/core/types";
 import { ANCHOR_ICONS, Icon, MODE_LABEL } from "./icons";
 import { PlaceSearch, type PickedPlace } from "./PlaceSearch";
-import type { Phase } from "./RouteLayer";
+import { DRAW_MS } from "./RouteLayer";
 
 const MapView = dynamic(() => import("./MapView"), { ssr: false });
 
@@ -19,6 +19,8 @@ const TIMES_KEY = "settle.times.v1";
 const MODES: Mode[] = ["transit", "drive", "bike", "walk"];
 
 const timeZone = () => Intl.DateTimeFormat().resolvedOptions().timeZone;
+const hasMapsKey = !!API_KEY;
+const STEP_MS = 300 + DRAW_MS + 500; // card grows, routes draw, short hold
 
 function loadPlan(): Plan {
   const m = location.hash.match(/^#s=([\w-]+)/);
@@ -65,16 +67,20 @@ export default function SettleApp() {
   const [plan, setPlan] = useState<Plan>(loadPlan);
   const [legs, setLegs] = useState<Map<string, Leg>>(() => loadMap<Leg>(LEGS_KEY));
   const [times, setTimes] = useState<Map<string, Time>>(() => loadMap<Time>(TIMES_KEY));
-  const [comparing, setComparing] = useState(false);
-  const [run, setRun] = useState<{ id: string; started: boolean } | null>(null);
-  const [focus, setFocus] = useState<string | null>(null);
+  const [selectedState, setSelectedState] = useState<string | null>(null);
+  const [collapsed, setCollapsed] = useState(false);
+  const [seq, setSeq] = useState<{ order: string[]; i: number } | null>(null);
+  const [pending, setPending] = useState<string[] | null>(null); // compare order, waiting for routes
+  const [hasRun, setHasRun] = useState(false);
+  const [epoch, setEpoch] = useState(0); // new value = redraw every route (Compare / Replay)
+  const [showAll, setShowAll] = useState(false);
+  const [reduceMotion] = useState(() => matchMedia("(prefers-reduced-motion: reduce)").matches);
   const [edit, setEdit] = useState<string | null>(null);
   const [adding, setAdding] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [legErrors, setLegErrors] = useState<Record<string, string>>({});
   const [copied, setCopied] = useState(false);
   const [fitKey, setFitKey] = useState("init");
-  const [phaseState, setPhaseState] = useState<{ key: string; p: Phase }>({ key: "", p: null });
 
   const { anchors, options } = plan;
   const overrides = useMemo(() => plan.overrides ?? {}, [plan.overrides]);
@@ -120,17 +126,23 @@ export default function SettleApp() {
       });
   }, [timesMissing, options, anchors]);
 
-  /* ---------- route lines, only for the mode chosen per pair, only while comparing ---------- */
+  const cmp = useMemo(() => compare(options, anchors, legs, times, overrides), [options, anchors, legs, times, overrides]);
+
+  // Exactly one home is always selected: the one you picked, the one the sequence is on, or the best.
+  const selected = seq ? seq.order[seq.i] : selectedState && options.some((o) => o.id === selectedState) ? selectedState : (cmp.rows[0]?.option.id ?? null);
+
+  /* ---------- route lines, only for the mode chosen per pair: the selected home, or every home for Compare ---------- */
+  const scope = useMemo(() => (pending || seq || showAll ? options : options.filter((o) => o.id === selected)), [pending, seq, showAll, options, selected]);
   const legsMissing = useMemo(
     () =>
-      comparing
-        ? options.flatMap((o) =>
+      hasMapsKey
+        ? scope.flatMap((o) =>
             anchors
               .map((a) => ({ o, a, mode: effectiveMode(overrides, o.id, a) }))
               .filter(({ o, a, mode }) => !legs.has(legKey(o.id, a.id, mode)) && !legErrors[pairKey(o.id, a.id)]),
           )
         : [],
-    [comparing, options, anchors, overrides, legs, legErrors],
+    [scope, anchors, overrides, legs, legErrors],
   );
   const legsInflight = useRef(false);
   const previousMode = useRef<Record<string, Mode>>({});
@@ -148,7 +160,6 @@ export default function SettleApp() {
           for (const l of j.legs) next.set(legKey(l.optionId, l.anchorId, l.mode), l);
           return next;
         });
-        setRun((r) => (r && !r.started ? { ...r, started: true } : r));
       })
       .catch((e: Error) => {
         // A single switched route that fails goes back to its previous mode; anything else is shown above the list.
@@ -166,7 +177,6 @@ export default function SettleApp() {
           setLegErrors((errs) => ({ ...errs, ...Object.fromEntries(switched.map(({ o, a }) => [pairKey(o.id, a.id), "Couldn't get that route. Try again."])) }));
         } else {
           setError(e.message);
-          setRun((r) => (r && !r.started ? { ...r, started: true } : r));
         }
       })
       .finally(() => {
@@ -175,19 +185,34 @@ export default function SettleApp() {
       });
   }, [legsMissing]);
 
-  const cmp = useMemo(() => compare(options, anchors, legs, times, overrides), [options, anchors, legs, times, overrides]);
-
-  // The draw sequence starts once the first batch of route lines is in, so it never waits on the network.
-  const runKey = comparing && run?.started ? run.id : null;
-  const phase: Phase = runKey && phaseState.key === runKey ? phaseState.p : null;
-  const onPhase = useCallback((key: string, p: Phase) => setPhaseState({ key, p }), []);
-  const drawOrder = useMemo(() => options.filter((o) => anchors.some((a) => legs.get(legKey(o.id, a.id, effectiveMode(overrides, o.id, a)))?.status === "ok")).map((o) => o.id), [options, anchors, legs, overrides]);
-  const drawingId = typeof phase === "number" ? drawOrder[phase] : undefined;
+  /* ---------- Compare: each home in turn, most travel first, ending on the best ---------- */
+  // Start once every home's routes are in, so the animation never waits on the network.
+  const allReady = !legsMissing.length;
+  useEffect(() => {
+    if (!pending || !allReady) return;
+    const raf = requestAnimationFrame(() => {
+      setPending(null);
+      setSeq({ order: pending, i: 0 });
+      setEpoch((e) => e + 1);
+    });
+    return () => cancelAnimationFrame(raf);
+  }, [pending, allReady]);
+  useEffect(() => {
+    if (!seq) return;
+    const t = setTimeout(() => {
+      if (seq.i + 1 < seq.order.length) setSeq({ ...seq, i: seq.i + 1 });
+      else {
+        setSelectedState(seq.order[seq.i]);
+        setSeq(null);
+      }
+    }, STEP_MS);
+    return () => clearTimeout(t);
+  }, [seq]);
 
   /* ---------- actions ---------- */
   const addAnchorAt = (location: LatLng, name: string, address?: string) => {
     if (anchors.length >= MAX_ANCHORS) return;
-    const a: Anchor = { id: newId(), name: name.slice(0, 40), icon: "other", location, address, mode: "transit" };
+    const a: Anchor = { id: newId(), name: name.slice(0, 40), icon: "other", location, address, mode: "transit", color: nextAnchorColor(anchors) };
     update((p) => ({ ...p, anchors: [...p.anchors, a] }));
     setAdding(false);
     setEdit(a.id);
@@ -202,7 +227,7 @@ export default function SettleApp() {
   };
   const removeOption = (id: string) => {
     update((p) => ({ ...p, options: p.options.filter((x) => x.id !== id), overrides: Object.fromEntries(Object.entries(p.overrides ?? {}).filter(([k]) => !k.startsWith(`${id}|`))) }));
-    if (focus === id) setFocus(null);
+    if (selectedState === id) setSelectedState(null);
   };
   const addOptionFromPlace = (pl: PickedPlace) => addOption({ id: newId(), title: pl.title, subtitle: pl.subtitle, location: pl.location, source: { kind: "manual" } });
   const addOptionFromLink = async (url: string) => {
@@ -212,22 +237,37 @@ export default function SettleApp() {
     addOption(j.option as Option);
   };
   const startCompare = () => {
-    const ready = options.every((o) => anchors.every((a) => legs.has(legKey(o.id, a.id, effectiveMode(overrides, o.id, a)))));
-    setComparing(true);
-    setRun({ id: newId(), started: ready });
-    setFocus(null);
+    const order = [...cmp.rows].reverse().map((r) => r.option.id); // most travel first, best last
     setEdit(null);
     setAdding(false);
     setError(null);
+    setCollapsed(false);
+    setHasRun(true);
     setFitKey(newId());
+    if (reduceMotion || order.length < 1) {
+      setSelectedState(order[order.length - 1] ?? null);
+      setEpoch((e) => e + 1);
+      return;
+    }
+    setSeq(null);
+    setPending(order);
   };
-  const stopCompare = () => {
-    setComparing(false);
-    setRun(null);
+  const skip = () => {
+    const order = seq?.order ?? pending;
+    setPending(null);
+    setSeq(null);
+    if (order?.length) setSelectedState(order[order.length - 1]);
   };
-  const toggleCard = (id: string) => {
-    setFocus((f) => (f === id ? null : id));
-    setFitKey(newId());
+  const selectHome = (id: string, fromPanel = false) => {
+    if (seq || pending) {
+      setSeq(null);
+      setPending(null);
+    }
+    if (id === selected && fromPanel) setCollapsed((c) => !c);
+    else {
+      setSelectedState(id);
+      setCollapsed(false);
+    }
   };
   const chooseMode = (o: Option, a: Anchor, mode: Mode) => {
     const k = pairKey(o.id, a.id);
@@ -260,22 +300,22 @@ export default function SettleApp() {
     if (adding) addAnchorAt(p, "Pinned place");
   };
   const onAnchorClick = (id: string) => setEdit((e) => (e === id ? null : id));
+  const running = !!(seq || pending);
 
-  const hasMaps = !!API_KEY;
-  const phaseDone = phase === "done";
+  const hasMaps = hasMapsKey;
 
   /* ---------- pieces ---------- */
   const modeButton = (r: OptionSummary, l: LegView, m: Mode) => {
     const mins = l.byMode[m];
-    const selected = l.mode === m;
-    const loading = selected && comparing && !l.leg && !legErrors[pairKey(r.option.id, l.anchor.id)];
+    const on = l.mode === m;
+    const loading = on && r.option.id === selected && !l.leg && !legErrors[pairKey(r.option.id, l.anchor.id)];
     const walkable = m === "walk" && l.walkable;
     return (
       <button
         key={m}
-        className={`mode${selected ? " on" : ""}${walkable ? " walkable" : ""}${loading ? " loading" : ""}`}
-        aria-pressed={selected}
-        disabled={mins === null && !selected}
+        className={`mode${on ? " on" : ""}${walkable ? " walkable" : ""}${loading ? " loading" : ""}`}
+        aria-pressed={on}
+        disabled={mins === null && !on}
         onClick={() => chooseMode(r.option, l.anchor, m)}
         title={mins === null ? `No ${MODE_LABEL[m].toLowerCase()} route` : undefined}
       >
@@ -289,12 +329,11 @@ export default function SettleApp() {
   };
 
   const card = (r: OptionSummary) => {
-    const o = r.option, open = focus === o.id, col = colorOf(o.id);
-    const dim = !!focus && !open;
+    const o = r.option, isSel = selected === o.id, open = isSel && !collapsed, col = colorOf(o.id);
     const listing = o.source.kind === "trademe" ? o.source.url : o.source.kind === "feed" ? o.source.url : undefined;
     return (
-      <div key={o.id} className={`card${open ? " open" : dim ? " dim" : drawingId === o.id ? " drawing" : ""}`} style={{ "--c": col } as React.CSSProperties}>
-        <button className="ch" aria-expanded={open} onClick={() => toggleCard(o.id)}>
+      <div key={o.id} className={`card${isSel ? " sel" : ""}${open ? " open" : ""}`} style={{ "--c": col } as React.CSSProperties}>
+        <button className="ch" aria-expanded={open} onClick={() => selectHome(o.id, true)}>
           <span className="ch-top">
             <span className="dot" />
             <span className="t">
@@ -309,7 +348,7 @@ export default function SettleApp() {
           <span className="ch-chips">
             <span className="chips">
               {r.legs.map((l, ai) => (
-                <span key={l.anchor.id} className={`chip${typeof l.minutes === "number" && cmp.fastest[ai] === l.minutes ? " best" : ""}`} title={`${l.anchor.name} · ${MODE_LABEL[l.mode]}`}>
+                <span key={l.anchor.id} className={`chip${typeof l.minutes === "number" && cmp.fastest[ai] === l.minutes ? " best" : ""}`} title={`${l.anchor.name} · ${MODE_LABEL[l.mode]}`} style={{ "--a": anchorColor(l.anchor, anchors.indexOf(l.anchor)) } as React.CSSProperties}>
                   <Icon name={l.anchor.icon} size={12} />
                   {l.minutes === undefined ? "…" : l.minutes === null ? "–" : `${l.minutes} m`}
                   {l.overridden && <i className="ov" />}
@@ -324,9 +363,9 @@ export default function SettleApp() {
             {r.legs.map((l) => {
               const k = pairKey(o.id, l.anchor.id);
               return (
-                <div key={l.anchor.id} className="leg">
+                <div key={l.anchor.id} className="leg" style={{ "--a": anchorColor(l.anchor, anchors.indexOf(l.anchor)) } as React.CSSProperties}>
                   <div className="leg-h">
-                    <span className="badge"><Icon name={l.anchor.icon} size={13} /></span>
+                    <span className="badge a"><Icon name={l.anchor.icon} size={13} /></span>
                     <span className="t">
                       <b>{l.anchor.name}{l.overridden && <i className="ov" title="Changed from the default" />}</b>
                       <span>{typeof l.minutes === "number" ? `Return trip · ${l.minutes * 2} min/day` : l.minutes === null ? `No ${MODE_LABEL[l.mode].toLowerCase()} route` : "Working it out…"}</span>
@@ -359,7 +398,7 @@ export default function SettleApp() {
         {anchors.map((a) => (
           <div key={a.id}>
             <button className="prow" aria-expanded={edit === a.id} onClick={() => { setEdit(edit === a.id ? null : a.id); setAdding(false); }}>
-              <span className="badge lg"><Icon name={a.icon} size={15} /></span>
+              <span className="badge lg a" style={{ "--a": anchorColor(a, anchors.indexOf(a)) } as React.CSSProperties}><Icon name={a.icon} size={15} /></span>
               <span className="t">
                 <b>{a.name}</b>
                 <span>{MODE_LABEL[a.mode]} by default</span>
@@ -418,8 +457,8 @@ export default function SettleApp() {
         <div className="head">
           <h1 className="brand"><span className="logo"><Icon name="logo" size={16} /></span>Settle</h1>
           <div className="head-actions">
-            <button className="btn" onClick={phaseDone ? () => { setFocus(null); setRun({ id: newId(), started: true }); setFitKey(newId()); } : startCompare} disabled={!options.length || !anchors.length || (comparing && !phaseDone)}>
-              {comparing ? (phaseDone ? "Replay" : "Drawing…") : "Compare"}
+            <button className={`btn${running ? "" : " dark"}`} onClick={running ? skip : startCompare} disabled={!options.length || !anchors.length}>
+              {running ? "Skip" : hasRun ? "Replay" : "Compare"}
             </button>
             <button className="btn" onClick={share} disabled={!options.length && !anchors.length}>{copied ? "Copied" : "Share"}</button>
           </div>
@@ -428,7 +467,7 @@ export default function SettleApp() {
           {plan.example && (
             <div className="banner">
               <span><b>This is an example.</b> Add your own homes and places, or start fresh.</span>
-              <button onClick={() => { setPlan({ anchors: [], options: [] }); setEdit(null); setFocus(null); stopCompare(); }}>Start fresh</button>
+              <button onClick={() => { setPlan({ anchors: [], options: [] }); setEdit(null); setSelectedState(null); skip(); setHasRun(false); }}>Start fresh</button>
             </div>
           )}
           {hasMaps && options.length < MAX_OPTIONS && (
@@ -438,12 +477,15 @@ export default function SettleApp() {
           )}
           <div className="subhead">
             <span>Weekday 8am · return trips per day</span>
-            <span>Sort: travel</span>
+            <label className="switch">
+              <input type="checkbox" checked={showAll} onChange={(e) => setShowAll(e.target.checked)} />
+              <span aria-hidden="true" />
+              Show all routes
+            </label>
           </div>
-          {comparing && (
+          {running && (
             <div className="status">
-              <span>{typeof phase === "number" ? `Drawing routes · ${phase + 1} of ${drawOrder.length}` : !runKey ? "Getting routes…" : focus ? "Tap the card again to see every route" : "Tap a home to highlight its routes"}</span>
-              <button onClick={stopCompare}>Hide routes</button>
+              <span>{seq ? `Comparing · ${seq.i + 1} of ${seq.order.length} · best last` : "Getting routes…"}</span>
             </div>
           )}
           {error && <p className="err" style={{ margin: "0 2px 10px" }}>{error}</p>}
@@ -460,16 +502,16 @@ export default function SettleApp() {
               anchors={anchors}
               options={options}
               overrides={overrides}
+              rows={cmp.rows}
               colorOf={colorOf}
               legs={legs}
-              comparing={comparing}
-              focus={focus}
+              selected={selected}
+              epoch={epoch}
+              showAll={showAll}
+              instant={reduceMotion}
               fitKey={fitKey}
               dropMode={adding}
-              runKey={runKey}
-              phase={phase}
-              onPhase={onPhase}
-              onOptionClick={toggleCard}
+              onSelect={(id) => selectHome(id)}
               onAnchorClick={onAnchorClick}
               onMapClick={onMapClick}
             />

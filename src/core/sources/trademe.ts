@@ -35,6 +35,8 @@ export type TmListing = {
   GeographicLocation?: { Latitude?: number; Longitude?: number };
   Attributes?: TmAttribute[];
   CanonicalPath?: string;
+  PictureHref?: string;
+  Photos?: { Value?: { Large?: string; Medium?: string; FullSize?: string } }[];
 };
 
 function attr(l: TmListing, ...names: string[]): string | undefined {
@@ -48,6 +50,17 @@ export function parsePriceDisplay(s?: string): Price | undefined {
   if (!m) return undefined;
   const period = /week/i.test(s) ? "week" : /month/i.test(s) ? "month" : /\b(per|\/)\b/i.test(s) ? "week" : "once";
   return { amount: Math.round(+m[1]), period, currency: "NZD" };
+}
+
+/** Only https image URLs from TradeMe's own image hosts are used as photos. */
+export function safePhoto(u?: string): string | undefined {
+  if (!u) return undefined;
+  try {
+    const url = new URL(u);
+    return url.protocol === "https:" && /(^|\.)(trademe\.co\.nz|tmcdn\.co\.nz|tmsandbox\.co\.nz)$/.test(url.hostname) ? url.toString() : undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 export function tradeMeToOption(l: TmListing, url: string): Option | null {
@@ -66,5 +79,6 @@ export function tradeMeToOption(l: TmListing, url: string): Option | null {
     bedrooms: Number.isFinite(beds) && beds > 0 ? beds : undefined,
     bathrooms: Number.isFinite(baths) && baths > 0 ? baths : undefined,
     propertyType: attr(l, "PropertyType"),
+    photo: safePhoto(l.Photos?.[0]?.Value?.Large ?? l.Photos?.[0]?.Value?.Medium ?? l.PictureHref),
   };
 }

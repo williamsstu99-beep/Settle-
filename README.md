@@ -8,7 +8,8 @@ Compare homes by how they fit your life. Add the places that matter (work, the g
 - **Homes** (`options` in code): added by typing an address, or by pasting a TradeMe link.
 - **Times for every mode:** as soon as homes and places are set, the server asks Google's Route Matrix API for durations from every home to every place by transit, drive, bike and walk (no route lines). These fill the mode buttons, the daily totals (return trip to each place) and the Walkable hint (walk ≤ 15 min).
 - **Per-route modes:** each home → place route uses the place's default mode unless you pick another on that home's card. Picking one fetches just that route and swaps it on the map.
-- **Compare:** the server asks Google's Routes API for the route line for each home → place pair in its chosen mode, at the next weekday 8am in your time zone (traffic-aware for driving, timetabled for transit, with walk/ride steps and line names). Homes draw one at a time, then settle into a muted overview; tap a home to highlight it.
+- **Map:** every home is a card on a stem above its location dot (compact, or expanded with photo for the selected home); every place is a card in its own permanent colour showing the trip time from the selected home. Only the selected home's routes are drawn, in each place's colour, leaving the home's dot and arriving at each place's dot. Cards are placed so they don't overlap (`src/core/layout.ts`).
+- **Compare:** fetches every home's routes, then selects each home in turn from most to least daily travel, so the best home is shown last and stays selected. Skip jumps to the end; Replay runs it again. "Show all routes" draws the other homes' routes faintly underneath.
 - **Share:** the whole plan is encoded in the link (`#s=…`). Nothing is stored on the server.
 
 The engine is deliberately general (anchors and options, not flats and workplaces), so other uses (buying, jobs, schools, relocation) are new screens rather than a rebuild.
