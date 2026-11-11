@@ -1,4 +1,4 @@
-import type { LatLng, Mode } from "@/core/types";
+import type { LatLng, Mode, TransitStep } from "@/core/types";
 import { TtlCache } from "./cache";
 
 /**
@@ -9,12 +9,18 @@ import { TtlCache } from "./cache";
  */
 
 const ENDPOINT = "https://routes.googleapis.com/directions/v2:computeRoutes";
+const MATRIX_ENDPOINT = "https://routes.googleapis.com/distanceMatrix/v2:computeRouteMatrix";
 const FIELD_MASK = "routes.duration,routes.distanceMeters,routes.polyline.encodedPolyline";
+const TRANSIT_FIELD_MASK =
+  FIELD_MASK +
+  ",routes.legs.steps.travelMode,routes.legs.steps.polyline.encodedPolyline" +
+  ",routes.legs.steps.transitDetails.transitLine.nameShort,routes.legs.steps.transitDetails.transitLine.name,routes.legs.steps.transitDetails.transitLine.vehicle.type";
+const MATRIX_FIELD_MASK = "originIndex,destinationIndex,duration,distanceMeters,condition,status";
 
 const TRAVEL_MODE: Record<Mode, string> = { drive: "DRIVE", transit: "TRANSIT", bike: "BICYCLE", walk: "WALK" };
 
 export type RouteResult =
-  | { status: "ok"; minutes: number; meters: number; polyline: string }
+  | { status: "ok"; minutes: number; meters: number; polyline: string; steps?: TransitStep[] }
   | { status: "no_route" };
 
 const cache = new TtlCache<RouteResult>(3 * 24 * 3600 * 1000);
@@ -28,33 +34,109 @@ export class RoutesApiError extends Error {
   }
 }
 
-export function buildRequestBody(origin: LatLng, destination: LatLng, mode: Mode, departure: Date) {
-  const body: Record<string, unknown> = {
-    origin: { location: { latLng: { latitude: origin.lat, longitude: origin.lng } } },
-    destination: { location: { latLng: { latitude: destination.lat, longitude: destination.lng } } },
-    travelMode: TRAVEL_MODE[mode],
-    polylineQuality: "OVERVIEW",
-  };
-  if (mode === "drive") {
-    body.routingPreference = "TRAFFIC_AWARE";
-    body.departureTime = departure.toISOString();
-  } else if (mode === "transit") {
-    body.departureTime = departure.toISOString();
+export type TimeResult = { status: "ok"; minutes: number; meters: number } | { status: "no_route" };
+const timeCache = new TtlCache<TimeResult>(3 * 24 * 3600 * 1000, 20000);
+
+const point = (p: LatLng) => ({ location: { latLng: { latitude: p.lat, longitude: p.lng } } });
+
+/** Mode-specific settings shared by single routes and the matrix. */
+function modeSettings(mode: Mode, departure: Date): Record<string, unknown> {
+  if (mode === "drive") return { travelMode: "DRIVE", routingPreference: "TRAFFIC_AWARE", departureTime: departure.toISOString() };
+  if (mode === "transit") return { travelMode: "TRANSIT", departureTime: departure.toISOString() };
+  return { travelMode: TRAVEL_MODE[mode] };
+}
+
+export function buildRequestBody(origin: LatLng, destination: LatLng, mode: Mode, departure: Date): Record<string, unknown> {
+  return { origin: point(origin), destination: point(destination), polylineQuality: "OVERVIEW", ...modeSettings(mode, departure) };
+}
+
+type ApiStep = {
+  travelMode?: string;
+  polyline?: { encodedPolyline?: string };
+  transitDetails?: { transitLine?: { nameShort?: string; name?: string; vehicle?: { type?: string } } };
+};
+type ApiRoute = { duration?: string; distanceMeters?: number; polyline?: { encodedPolyline?: string }; legs?: { steps?: ApiStep[] }[] };
+
+const toMinutes = (duration: string) => Math.max(1, Math.round(parseFloat(duration) / 60));
+
+/**
+ * Turn transit steps into walk/ride parts. Consecutive walking steps are
+ * joined (Google splits a walk at every turn), rides keep their line name.
+ */
+export function parseTransitSteps(route: ApiRoute): TransitStep[] | undefined {
+  const raw = route.legs?.flatMap((l) => l.steps ?? []) ?? [];
+  if (!raw.some((s) => s.travelMode === "TRANSIT")) return undefined;
+  const out: TransitStep[] = [];
+  for (const s of raw) {
+    const poly = s.polyline?.encodedPolyline;
+    if (!poly) continue;
+    if (s.travelMode === "TRANSIT") {
+      const line = s.transitDetails?.transitLine;
+      out.push({ kind: "ride", polyline: poly, line: line?.nameShort || line?.name || undefined, vehicle: line?.vehicle?.type || undefined });
+    } else {
+      const prev = out[out.length - 1];
+      if (prev?.kind === "walk") prev.polyline = joinPolylines(prev.polyline, poly);
+      else out.push({ kind: "walk", polyline: poly });
+    }
   }
-  return body;
+  return out.length ? out : undefined;
+}
+
+/** Join two encoded polylines (re-encodes; precision 5). */
+function joinPolylines(a: string, b: string): string {
+  return encodePolyline([...decode(a), ...decode(b)]);
+}
+function decode(e: string): [number, number][] {
+  const out: [number, number][] = [];
+  let i = 0, lat = 0, lng = 0;
+  while (i < e.length) {
+    for (const k of [0, 1]) {
+      let r = 0, sh = 0, b: number;
+      do { b = e.charCodeAt(i++) - 63; r |= (b & 31) << sh; sh += 5; } while (b >= 32);
+      const d = r & 1 ? ~(r >> 1) : r >> 1;
+      if (k === 0) lat += d; else lng += d;
+    }
+    out.push([lat, lng]);
+  }
+  return out;
+}
+function encodePolyline(pts: [number, number][]): string {
+  let o = "", pl = 0, pg = 0;
+  const enc = (v: number) => {
+    v = v < 0 ? ~(v << 1) : v << 1;
+    let s = "";
+    while (v >= 32) { s += String.fromCharCode((32 | (v & 31)) + 63); v >>= 5; }
+    return s + String.fromCharCode(v + 63);
+  };
+  for (const [a, g] of pts) { o += enc(a - pl) + enc(g - pg); pl = a; pg = g; }
+  return o;
 }
 
 export function parseResponse(json: unknown): RouteResult {
-  const r = (json as { routes?: { duration?: string; distanceMeters?: number; polyline?: { encodedPolyline?: string } }[] })?.routes?.[0];
+  const r = (json as { routes?: ApiRoute[] })?.routes?.[0];
   if (!r?.duration) return { status: "no_route" };
-  const secs = parseFloat(r.duration);
   return {
     status: "ok",
-    minutes: Math.max(1, Math.round(secs / 60)),
+    minutes: toMinutes(r.duration),
     meters: r.distanceMeters ?? 0,
     polyline: r.polyline?.encodedPolyline ?? "",
+    steps: parseTransitSteps(r),
   };
 }
+
+async function googleError(res: Response): Promise<RoutesApiError> {
+  const text = await res.text().catch(() => "");
+  let msg = `Google Routes API returned ${res.status}`;
+  try {
+    const err = JSON.parse(text)?.error as { message?: string; status?: string; details?: { reason?: string }[] } | undefined;
+    const reason = err?.details?.find((d) => d.reason)?.reason;
+    msg = [err?.message ?? msg, reason ? `(${reason})` : err?.status ? `(${err.status})` : ""].filter(Boolean).join(" ");
+  } catch {}
+  return new RoutesApiError(msg, res.status);
+}
+
+/** Google's answer for a mode it doesn't serve somewhere is "no route", not a failure. */
+const unsupported = (e: RoutesApiError) => e.status === 400 && /not supported|unsupported|no route/i.test(e.message);
 
 export async function computeRoute(
   origin: LatLng,
@@ -73,31 +155,71 @@ export async function computeRoute(
     headers: {
       "Content-Type": "application/json",
       "X-Goog-Api-Key": apiKey,
-      "X-Goog-FieldMask": FIELD_MASK,
+      "X-Goog-FieldMask": mode === "transit" ? TRANSIT_FIELD_MASK : FIELD_MASK,
     },
     body: JSON.stringify(buildRequestBody(origin, destination, mode, departure)),
     signal: AbortSignal.timeout(12000),
   });
 
   if (!res.ok) {
-    const text = await res.text().catch(() => "");
-    let msg = `Google Routes API returned ${res.status}`;
-    try {
-      const err = JSON.parse(text)?.error as { message?: string; status?: string; details?: { reason?: string }[] } | undefined;
-      const reason = err?.details?.find((d) => d.reason)?.reason;
-      msg = [err?.message ?? msg, reason ? `(${reason})` : err?.status ? `(${err.status})` : ""].filter(Boolean).join(" ");
-    } catch {}
-    // A mode Google can't serve in this region (e.g. bike in some countries) is "no route", not a failure.
-    if (res.status === 400 && /not supported|unsupported|no route/i.test(msg)) {
+    const err = await googleError(res);
+    if (unsupported(err)) {
       const none: RouteResult = { status: "no_route" };
       cache.set(key, none);
       return none;
     }
-    throw new RoutesApiError(msg, res.status);
+    throw err;
   }
   const result = parseResponse(await res.json());
   cache.set(key, result);
+  if (result.status === "ok") timeCache.set(key, { status: "ok", minutes: result.minutes, meters: result.meters });
   return result;
+}
+
+type MatrixElement = { originIndex?: number; destinationIndex?: number; duration?: string; distanceMeters?: number; condition?: string; status?: { code?: number } };
+
+export function parseMatrix(json: unknown, origins: number, destinations: number): TimeResult[][] {
+  const grid: TimeResult[][] = Array.from({ length: origins }, () => Array.from({ length: destinations }, () => ({ status: "no_route" as const })));
+  const els = Array.isArray(json) ? (json as MatrixElement[]) : [];
+  for (const e of els) {
+    const o = e.originIndex ?? 0, d = e.destinationIndex ?? 0;
+    if (o >= origins || d >= destinations) continue;
+    if ((e.status?.code ?? 0) !== 0 || e.condition !== "ROUTE_EXISTS" || !e.duration) continue;
+    grid[o][d] = { status: "ok", minutes: toMinutes(e.duration), meters: e.distanceMeters ?? 0 };
+  }
+  return grid;
+}
+
+/**
+ * Travel times only (no route lines) for every origin × destination in one
+ * mode, using the Route Matrix API. Cached per pair; only uncached origins are
+ * sent to Google.
+ */
+export async function computeTimes(origins: LatLng[], destinations: LatLng[], mode: Mode, departure: Date, apiKey: string, slot = "peak"): Promise<TimeResult[][]> {
+  const keyOf = (o: number, d: number) => routeCacheKey(origins[o], destinations[d], mode, slot);
+  const grid: (TimeResult | undefined)[][] = origins.map((_, o) => destinations.map((_, d) => timeCache.get(keyOf(o, d))));
+  const need = origins.map((_, o) => o).filter((o) => grid[o].some((t) => !t));
+  if (need.length && destinations.length) {
+    const res = await fetch(MATRIX_ENDPOINT, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-Goog-Api-Key": apiKey, "X-Goog-FieldMask": MATRIX_FIELD_MASK },
+      body: JSON.stringify({ origins: need.map((o) => ({ waypoint: point(origins[o]) })), destinations: destinations.map((d) => ({ waypoint: point(d) })), ...modeSettings(mode, departure) }),
+      signal: AbortSignal.timeout(15000),
+    });
+    let fresh: TimeResult[][];
+    if (!res.ok) {
+      const err = await googleError(res);
+      if (!unsupported(err)) throw err;
+      fresh = need.map(() => destinations.map(() => ({ status: "no_route" as const })));
+    } else {
+      fresh = parseMatrix(await res.json(), need.length, destinations.length);
+    }
+    need.forEach((o, i) => destinations.forEach((_, d) => {
+      grid[o][d] = fresh[i][d];
+      timeCache.set(keyOf(o, d), fresh[i][d]);
+    }));
+  }
+  return grid as TimeResult[][];
 }
 
 /** Run async jobs with a concurrency cap. */

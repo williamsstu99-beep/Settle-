@@ -2,9 +2,12 @@
 
 import { Map, useMap } from "@vis.gl/react-google-maps";
 import { useEffect, useMemo } from "react";
-import { formatPrice, legKey } from "@/core/compare";
+import { effectiveMode, formatPrice, legKey, pairKey, type Overrides } from "@/core/compare";
 import { decodePolyline, measure, midpoint } from "@/core/polyline";
+
+const vehicleIcon = (v?: string): IconName => (v && /RAIL|TRAIN|SUBWAY|TRAM|METRO/.test(v) ? "train" : v === "FERRY" ? "ferry" : "transit");
 import type { Anchor, LatLng, Leg, Option } from "@/core/types";
+import type { IconName } from "./icons";
 import { HtmlMarker } from "./HtmlMarker";
 import { Icon, optionIcon } from "./icons";
 import { MAP_STYLE } from "./mapStyle";
@@ -15,6 +18,7 @@ const MAP_ID = process.env.NEXT_PUBLIC_GOOGLE_MAP_ID;
 type Props = {
   anchors: Anchor[];
   options: Option[];
+  overrides: Overrides;
   colorOf: (id: string) => string;
   legs: Map<string, Leg>;
   comparing: boolean;
@@ -48,22 +52,27 @@ function FitBounds({ points, fitKey }: { points: LatLng[]; fitKey: string }) {
 }
 
 export default function MapView(p: Props) {
-  const { comparing, options, anchors, legs, colorOf } = p;
+  const { comparing, options, anchors, legs, colorOf, overrides } = p;
 
   // Every route for the comparison, decoded once. Order of homes = order of the list.
   const routes = useMemo(() => {
     if (!comparing) return [];
     return options.flatMap((o) =>
       anchors.flatMap((a) => {
-        const leg = legs.get(legKey(o.id, a.id, a.mode));
+        const mode = effectiveMode(overrides, o.id, a);
+        const leg = legs.get(legKey(o.id, a.id, mode));
         if (leg?.status !== "ok" || !leg.polyline) return [];
         const path = decodePolyline(leg.polyline);
-        return [{ key: legKey(o.id, a.id, a.mode), optionId: o.id, anchor: a, leg, color: colorOf(o.id), m: measure(path), mid: midpoint(path) }];
+        // Transit: walking parts dashed, rides solid, each ride labelled with its line.
+        const steps = leg.steps?.map((s) => ({ ...s, path: decodePolyline(s.polyline) })).filter((s) => s.path.length > 1);
+        const parts = steps?.length ? steps.map((s) => ({ m: measure(s.path), dashed: s.kind === "walk" })) : [{ m: measure(path), dashed: mode === "walk" }];
+        const rides = (steps ?? []).filter((s) => s.kind === "ride" && s.line).map((s) => ({ line: s.line!, vehicle: s.vehicle, at: midpoint(s.path)! }));
+        return [{ key: legKey(o.id, a.id, mode), pair: pairKey(o.id, a.id), optionId: o.id, anchor: a, mode, leg, color: colorOf(o.id), parts, rides, mid: midpoint(path) }];
       }),
     );
-  }, [comparing, options, anchors, legs, colorOf]);
+  }, [comparing, options, anchors, legs, colorOf, overrides]);
 
-  const drawRoutes: DrawRoute[] = useMemo(() => routes.map(({ key, optionId, color, m }) => ({ key, optionId, color, m })), [routes]);
+  const drawRoutes: DrawRoute[] = useMemo(() => routes.map(({ key, pair, optionId, color, parts }) => ({ key, pair, optionId, color, parts })), [routes]);
   const order = useMemo(() => options.filter((o) => routes.some((r) => r.optionId === o.id)).map((o) => o.id), [options, routes]);
 
   const fitPoints = useMemo(() => {
@@ -102,8 +111,20 @@ export default function MapView(p: Props) {
         .map((r) => (
           <HtmlMarker key={`${r.key}t`} position={r.mid!} zIndex={30}>
             <div className="tb" style={{ "--c": r.color } as React.CSSProperties}>
-              <Icon name={r.anchor.icon} size={13} />
+              <Icon name={r.mode} size={13} />
               {r.leg.minutes} min
+            </div>
+          </HtmlMarker>
+        ))}
+
+      {routes
+        .filter((r) => r.optionId === badgesFor)
+        .flatMap((r) => r.rides.map((ride, i) => ({ r, ride, i })))
+        .map(({ r, ride, i }) => (
+          <HtmlMarker key={`${r.key}l${i}`} position={ride.at} zIndex={31}>
+            <div className="line-tag" style={{ "--c": r.color } as React.CSSProperties}>
+              <Icon name={vehicleIcon(ride.vehicle)} size={11} />
+              {ride.line}
             </div>
           </HtmlMarker>
         ))}

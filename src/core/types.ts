@@ -62,4 +62,24 @@ export type Leg = {
   meters?: number;
   /** Google encoded polyline. */
   polyline?: string;
+  /** Transit only: the route split into walking and riding parts. */
+  steps?: TransitStep[];
+};
+
+export type TransitStep = {
+  kind: "walk" | "ride";
+  polyline: string;
+  /** Short line name for rides, e.g. "25B" or "Western Line". */
+  line?: string;
+  vehicle?: string; // e.g. BUS, HEAVY_RAIL, FERRY
+};
+
+/** A travel time without geometry, from the batch (matrix) request. */
+export type Time = {
+  optionId: string;
+  anchorId: string;
+  mode: Mode;
+  status: "ok" | "no_route";
+  minutes?: number;
+  meters?: number;
 };

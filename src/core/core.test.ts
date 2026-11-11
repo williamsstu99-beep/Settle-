@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { nextPeakDeparture, zonedTime } from "./time";
 import { decodePolyline, midpoint } from "./polyline";
-import { compare, formatDistance, formatMinutes, formatPrice, legKey } from "./compare";
+import { compare, effectiveMode, formatDistance, formatMinutes, formatPrice, legKey, pairKey } from "./compare";
 import { parsePriceDisplay, parseTradeMeListingId, tradeMeToOption } from "./sources/trademe";
-import type { Anchor, Leg, Option } from "./types";
+import type { Anchor, Leg, Option, Time } from "./types";
 
 describe("nextPeakDeparture", () => {
   it("returns tomorrow 8am NZ time on a weekday evening", () => {
@@ -54,30 +54,42 @@ describe("compare", () => {
     { id: "g", name: "Gym", icon: "gym", location: { lat: 0, lng: 0 }, mode: "bike" },
   ];
   const opt = (id: string): Option => ({ id, title: id, location: { lat: 0, lng: 0 }, source: { kind: "manual" } });
-  const leg = (o: string, a: Anchor, minutes: number): [string, Leg] => [legKey(o, a.id, a.mode), { optionId: o, anchorId: a.id, mode: a.mode, status: "ok", minutes }];
+  const time = (o: string, a: string, mode: Time["mode"], minutes: number | null): [string, Time] => [legKey(o, a, mode), minutes == null ? { optionId: o, anchorId: a, mode, status: "no_route" } : { optionId: o, anchorId: a, mode, status: "ok", minutes }];
+  const leg = (o: string, a: string, mode: Leg["mode"], minutes: number): [string, Leg] => [legKey(o, a, mode), { optionId: o, anchorId: a, mode, status: "ok", minutes, polyline: "x" }];
 
-  it("totals, fastest per anchor and a single least-travel winner", () => {
-    const legs = new Map([leg("a", anchors[0], 20), leg("a", anchors[1], 15), leg("b", anchors[0], 30), leg("b", anchors[1], 10)]);
-    const c = compare([opt("a"), opt("b")], anchors, legs);
-    expect(c.rows.map((r) => r.totalMinutes)).toEqual([35, 40]);
+  it("totals return trips per day, sorts least travel first and crowns one winner", () => {
+    const times = new Map([time("a", "w", "transit", 30), time("a", "g", "bike", 15), time("b", "w", "transit", 20), time("b", "g", "bike", 10)]);
+    const c = compare([opt("a"), opt("b")], anchors, new Map(), times);
+    expect(c.rows.map((r) => [r.option.id, r.dailyMinutes, r.leastTravel])).toEqual([["b", 60, true], ["a", 90, false]]);
     expect(c.fastest).toEqual([20, 10]);
-    expect(c.rows.map((r) => r.leastTravel)).toEqual([true, false]);
   });
-  it("does not crown a winner on a tie or with a single option", () => {
-    const legs = new Map([leg("a", anchors[0], 20), leg("a", anchors[1], 10), leg("b", anchors[0], 10), leg("b", anchors[1], 20)]);
-    expect(compare([opt("a"), opt("b")], anchors, legs).rows.some((r) => r.leastTravel)).toBe(false);
-    const one = compare([opt("a")], anchors, legs);
-    expect(one.rows[0].leastTravel).toBe(false);
-    expect(one.fastest).toEqual([null, null]);
+  it("uses an override for one home → place only", () => {
+    const times = new Map([time("a", "w", "transit", 30), time("a", "w", "drive", 12), time("a", "g", "bike", 15), time("b", "w", "transit", 30), time("b", "g", "bike", 15)]);
+    const c = compare([opt("a"), opt("b")], anchors, new Map(), times, { [pairKey("a", "w")]: "drive" });
+    const a = c.rows.find((r) => r.option.id === "a")!;
+    expect(a.legs[0]).toMatchObject({ mode: "drive", overridden: true, minutes: 12 });
+    expect(a.dailyMinutes).toBe(54);
+    expect(c.rows.find((r) => r.option.id === "b")!.legs[0]).toMatchObject({ mode: "transit", overridden: false });
+    expect(effectiveMode({ [pairKey("a", "w")]: "drive" }, "b", anchors[0])).toBe("transit");
   });
-  it("leaves totals empty when a leg has no route", () => {
-    const legs = new Map([leg("a", anchors[0], 20), [legKey("a", "g", "bike"), { optionId: "a", anchorId: "g", mode: "bike", status: "no_route" } as Leg]]);
-    expect(compare([opt("a")], anchors, legs).rows[0].totalMinutes).toBeNull();
+  it("prefers the route's time over the batch estimate", () => {
+    const times = new Map([time("a", "w", "transit", 30), time("a", "g", "bike", 15)]);
+    const legs = new Map([leg("a", "w", "transit", 31)]);
+    expect(compare([opt("a")], anchors, legs, times).rows[0].legs[0].minutes).toBe(31);
   });
-  it("is keyed by mode, so changing an anchor's mode needs new legs", () => {
-    const legs = new Map([leg("a", anchors[0], 20)]);
-    const walking = [{ ...anchors[0], mode: "walk" as const }];
-    expect(compare([opt("a")], walking, legs).rows[0].legs[0]).toBeUndefined();
+  it("marks short walks as walkable unless walking is already chosen", () => {
+    const times = new Map([time("a", "w", "transit", 12), time("a", "w", "walk", 15), time("a", "g", "bike", 5), time("a", "g", "walk", 16)]);
+    const c = compare([opt("a")], anchors, new Map(), times);
+    expect(c.rows[0].legs.map((l) => l.walkable)).toEqual([true, false]);
+    const w = compare([opt("a")], anchors, new Map(), times, { [pairKey("a", "w")]: "walk" });
+    expect(w.rows[0].legs[0].walkable).toBe(false);
+  });
+  it("leaves the total empty when a chosen mode has no route, and keeps those homes last", () => {
+    const times = new Map([time("a", "w", "transit", null), time("a", "g", "bike", 5), time("b", "w", "transit", 40), time("b", "g", "bike", 40)]);
+    const c = compare([opt("a"), opt("b")], anchors, new Map(), times);
+    expect(c.rows.map((r) => [r.option.id, r.dailyMinutes])).toEqual([["b", 160], ["a", null]]);
+    expect(c.rows[1].legs[0].minutes).toBeNull();
+    expect(c.rows.some((r) => r.leastTravel)).toBe(false);
   });
 });
 
@@ -167,5 +179,14 @@ describe("progressive route drawing", () => {
     expect(easeInOut(0)).toBe(0);
     expect(easeInOut(1)).toBe(1);
     expect(easeInOut(0.5)).toBeCloseTo(0.5);
+  });
+});
+
+describe("share links keep mode choices", () => {
+  it("round-trips per-route overrides by position", () => {
+    const plan = { ...EXAMPLE_PLAN, overrides: { "ex-2|ex-work": "drive" as const, "ex-3|ex-gym": "walk" as const } };
+    const back = decodePlan(encodePlan(plan))!;
+    const o = (i: number) => back.options[i].id, a = (i: number) => back.anchors[i].id;
+    expect(back.overrides).toEqual({ [`${o(1)}|${a(0)}`]: "drive", [`${o(2)}|${a(1)}`]: "walk" });
   });
 });
