@@ -1,7 +1,13 @@
-import type { Anchor, Option } from "./types";
+import type { Anchor, Mode, Option } from "./types";
 
 /** What a user is working on: their places and the homes they're weighing up. */
-export type Plan = { anchors: Anchor[]; options: Option[]; example?: boolean };
+export type Plan = {
+  anchors: Anchor[];
+  options: Option[];
+  /** Mode choices for individual home → place routes, keyed `${optionId}|${anchorId}`. */
+  overrides?: Record<string, Mode>;
+  example?: boolean;
+};
 
 export const MAX_OPTIONS = 6;
 export const MAX_ANCHORS = 8;
@@ -43,6 +49,11 @@ const r5 = (n: number) => Math.round(n * 1e5) / 1e5;
 export function encodePlan(plan: Plan): string {
   const slim = {
     a: plan.anchors.map((a) => [a.name, a.icon, r5(a.location.lat), r5(a.location.lng), a.mode, a.address ?? ""]),
+    m: Object.entries(plan.overrides ?? {}).flatMap(([k, mode]) => {
+      const [oid, aid] = k.split("|");
+      const oi = plan.options.findIndex((o) => o.id === oid), ai = plan.anchors.findIndex((a) => a.id === aid);
+      return oi >= 0 && ai >= 0 ? [[oi, ai, mode]] : [];
+    }),
     o: plan.options.map((o) => [o.title, o.subtitle ?? "", r5(o.location.lat), r5(o.location.lng), o.price ? [o.price.amount, o.price.period, o.price.currency] : 0, o.bedrooms ?? 0, o.propertyType ?? "", o.source.kind === "trademe" ? o.source.listingId : ""]),
   };
   return toB64Url(JSON.stringify(slim));
@@ -56,7 +67,7 @@ const str = (v: unknown, max = 120) => (typeof v === "string" ? v.slice(0, max) 
 /** Decode a share link. Anything malformed is dropped rather than trusted. */
 export function decodePlan(s: string): Plan | null {
   try {
-    const raw = JSON.parse(fromB64Url(s)) as { a?: unknown[][]; o?: unknown[][] };
+    const raw = JSON.parse(fromB64Url(s)) as { a?: unknown[][]; o?: unknown[][]; m?: unknown[][] };
     const anchors = (raw.a ?? []).slice(0, MAX_ANCHORS).flatMap((a): Plan["anchors"] => {
       if (!Array.isArray(a) || !num(a[2], -90, 90) || !num(a[3], -180, 180)) return [];
       return [{ id: newId(), name: str(a[0], 40) || "Place", icon: (ICONS.has(a[1] as string) ? a[1] : "other") as Plan["anchors"][number]["icon"], location: { lat: a[2] as number, lng: a[3] as number }, mode: (MODES.has(a[4] as string) ? a[4] : "transit") as Plan["anchors"][number]["mode"], address: str(a[5]) || undefined }];
@@ -67,7 +78,13 @@ export function decodePlan(s: string): Plan | null {
       const tm = str(o[7], 20);
       return [{ id: newId(), title: str(o[0], 80) || "Home", subtitle: str(o[1], 80) || undefined, location: { lat: o[2] as number, lng: o[3] as number }, price: p, bedrooms: num(o[5], 1, 50) ? (o[5] as number) : undefined, propertyType: str(o[6], 30) || undefined, source: /^\d{6,}$/.test(tm) ? { kind: "trademe", listingId: tm, url: `https://www.trademe.co.nz/a/listing/${tm}` } : { kind: "manual" } }];
     });
-    return { anchors, options };
+    const overrides: Record<string, Mode> = {};
+    for (const m of raw.m ?? []) {
+      if (!Array.isArray(m) || !MODES.has(m[2] as string)) continue;
+      const o = options[m[0] as number], a = anchors[m[1] as number];
+      if (o && a && a.mode !== m[2]) overrides[`${o.id}|${a.id}`] = m[2] as Mode;
+    }
+    return { anchors, options, overrides };
   } catch {
     return null;
   }

@@ -70,3 +70,57 @@ describe("Google errors", () => {
     await expect(computeRoute({ lat: 1, lng: 1 }, { lat: 2, lng: 2 }, "drive", dep, "k", "t1")).rejects.toMatchObject({ status: 403, message: "Requests from referer <empty> are blocked. (API_KEY_HTTP_REFERRER_BLOCKED)" });
   });
 });
+
+import { computeTimes, parseMatrix, parseResponse as parseRoute } from "./google-routes";
+
+describe("transit steps", () => {
+  it("joins walking steps and keeps line names on rides", () => {
+    const r = parseRoute({
+      routes: [{
+        duration: "1800s", distanceMeters: 6000, polyline: { encodedPolyline: "_p~iF~ps|U_ulLnnqC" },
+        legs: [{ steps: [
+          { travelMode: "WALK", polyline: { encodedPolyline: "_p~iF~ps|U" } },
+          { travelMode: "WALK", polyline: { encodedPolyline: "_ulLnnqC" } },
+          { travelMode: "TRANSIT", polyline: { encodedPolyline: "_mqNvxq`@" }, transitDetails: { transitLine: { nameShort: "25B", vehicle: { type: "BUS" } } } },
+          { travelMode: "TRANSIT", polyline: { encodedPolyline: "_mqNvxq`@" }, transitDetails: { transitLine: { name: "Western Line", vehicle: { type: "HEAVY_RAIL" } } } },
+          { travelMode: "WALK", polyline: { encodedPolyline: "_ulLnnqC" } },
+        ] }],
+      }],
+    });
+    expect(r.status === "ok" && r.steps?.map((s) => [s.kind, s.line ?? "", s.vehicle ?? ""])).toEqual([["walk", "", ""], ["ride", "25B", "BUS"], ["ride", "Western Line", "HEAVY_RAIL"], ["walk", "", ""]]);
+  });
+  it("leaves driving routes without steps", () => {
+    const r = parseRoute({ routes: [{ duration: "600s", distanceMeters: 1, polyline: { encodedPolyline: "abc" } }] });
+    expect(r.status === "ok" && r.steps).toBeUndefined();
+  });
+});
+
+describe("route matrix", () => {
+  afterEach(() => vi.unstubAllGlobals());
+  it("parses elements into a grid and treats missing routes as no route", () => {
+    const g = parseMatrix([
+      { originIndex: 0, destinationIndex: 1, duration: "900s", distanceMeters: 4000, condition: "ROUTE_EXISTS" },
+      { originIndex: 1, destinationIndex: 0, condition: "ROUTE_NOT_FOUND" },
+      { originIndex: 0, destinationIndex: 0, duration: "60s", condition: "ROUTE_EXISTS", status: { code: 3 } },
+    ], 2, 2);
+    expect(g[0][1]).toEqual({ status: "ok", minutes: 15, meters: 4000 });
+    expect(g[1][0].status).toBe("no_route");
+    expect(g[0][0].status).toBe("no_route");
+  });
+  it("only asks Google for pairs it hasn't cached", async () => {
+    const calls: { origins: unknown[] }[] = [];
+    vi.stubGlobal("fetch", vi.fn(async (_u: string, init: { body: string }) => {
+      const body = JSON.parse(init.body);
+      calls.push(body);
+      return new Response(JSON.stringify(body.origins.flatMap((_: unknown, o: number) => body.destinations.map((_: unknown, d: number) => ({ originIndex: o, destinationIndex: d, duration: "600s", condition: "ROUTE_EXISTS" })))));
+    }));
+    const o = [{ lat: -36.9, lng: 174.7 }, { lat: -36.91, lng: 174.71 }], d = [{ lat: -36.84, lng: 174.76 }];
+    await computeTimes(o, d, "walk", dep, "k", "mx");
+    const again = await computeTimes(o, d, "walk", dep, "k", "mx");
+    expect(calls).toHaveLength(1);
+    expect(again[1][0]).toEqual({ status: "ok", minutes: 10, meters: 0 });
+    await computeTimes([...o, { lat: -36.95, lng: 174.8 }], d, "walk", dep, "k", "mx");
+    expect(calls).toHaveLength(2);
+    expect(calls[1].origins).toHaveLength(1);
+  });
+});

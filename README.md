@@ -6,7 +6,9 @@ Compare homes by how they fit your life. Add the places that matter (work, the g
 
 - **Places** (`anchors` in code): where you need to get to, and how you travel there (transit, drive, bike or walk).
 - **Homes** (`options` in code): added by typing an address, or by pasting a TradeMe link.
-- **Compare:** for every home → place pair, the server asks Google's Routes API for the trip at the next weekday 8am in your time zone (traffic-aware for driving, timetabled for transit). Each home gets its own colour on the map; tap one to highlight its routes and timeline while the others turn grey.
+- **Times for every mode:** as soon as homes and places are set, the server asks Google's Route Matrix API for durations from every home to every place by transit, drive, bike and walk (no route lines). These fill the mode buttons, the daily totals (return trip to each place) and the Walkable hint (walk ≤ 15 min).
+- **Per-route modes:** each home → place route uses the place's default mode unless you pick another on that home's card. Picking one fetches just that route and swaps it on the map.
+- **Compare:** the server asks Google's Routes API for the route line for each home → place pair in its chosen mode, at the next weekday 8am in your time zone (traffic-aware for driving, timetabled for transit, with walk/ride steps and line names). Homes draw one at a time, then settle into a muted overview; tap a home to highlight it.
 - **Share:** the whole plan is encoded in the link (`#s=…`). Nothing is stored on the server.
 
 The engine is deliberately general (anchors and options, not flats and workplaces), so other uses (buying, jobs, schools, relocation) are new screens rather than a rebuild.
@@ -18,7 +20,8 @@ The engine is deliberately general (anchors and options, not flats and workplace
 | `src/core` | Pure logic: types, comparison, peak-time calculation, polyline decoding, share links, listing sources. Fully tested. |
 | `src/core/sources/trademe.ts` | TradeMe link parsing and listing → option mapping. New listing sources (agency feeds, other portals) go next to it. |
 | `src/server` | Google Routes client with caching, TradeMe API client, rate limiting. |
-| `src/app/api/routes` | `POST` travel times for home → place pairs (max 48 per request). |
+| `src/app/api/times` | `POST` durations for every home × place × mode (Route Matrix API). |
+| `src/app/api/routes` | `POST` route lines for home → place pairs in a given mode (Routes API, max 48 per request). |
 | `src/app/api/listing` | `GET ?url=` turns a TradeMe link into a home. |
 | `src/components` | The UI: side panel (`SettleApp`), map (`MapView`), address search (`PlaceSearch`). |
 
@@ -35,7 +38,7 @@ Without keys the app still opens with an example plan, but the map, address sear
 ### Google Maps Platform
 
 1. Create a project at [console.cloud.google.com](https://console.cloud.google.com) and turn on billing (Google includes a monthly free allowance per API).
-2. Enable **Maps JavaScript API**, **Places API (New)** and **Routes API**.
+2. Enable **Maps JavaScript API**, **Places API (New)** and **Routes API** (the Routes API covers both route lines and the route matrix).
 3. Create two API keys:
    - **Browser key** → `NEXT_PUBLIC_GOOGLE_MAPS_API_KEY`. Restrict it to *Websites* (your domains, plus `localhost:3000` for development) and to the Maps JavaScript and Places APIs.
    - **Server key** → `GOOGLE_MAPS_SERVER_KEY`. Restrict it to the Routes API only.
@@ -47,7 +50,8 @@ Register an application at the [TradeMe developer site](https://developer.tradem
 
 ## Cost controls built in
 
-- Route results are cached for 3 days by rounded coordinates and mode, and in the browser, so repeat comparisons are free.
+- Route lines and matrix times are cached for 3 days by rounded coordinates and mode, and in the browser, so repeat comparisons and switching back to a mode are free.
+- The matrix call costs one element per home × place × mode (e.g. 3 homes × 3 places × 4 modes = 36). Transit and traffic-aware driving elements are billed at a higher tier than walk and bike.
 - Routes are only requested when someone presses Compare, and only for pairs not already known.
 - Limits: 6 homes and 8 places per plan, 48 pairs per request, 30 comparisons a minute per client.
 
