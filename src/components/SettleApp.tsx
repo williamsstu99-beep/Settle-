@@ -2,12 +2,14 @@
 
 import { APIProvider } from "@vis.gl/react-google-maps";
 import dynamic from "next/dynamic";
+import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { compare, effectiveMode, formatPrice, legKey, pairKey, type LegView, type OptionSummary } from "@/core/compare";
 import { anchorColor, decodePlan, encodePlan, EXAMPLE_PLAN, letterOf, migratePlan, MAX_ANCHORS, MAX_OPTIONS, newId, nextAnchorColor, type Plan } from "@/core/plan";
 import type { Anchor, LatLng, Leg, Mode, Option, Time } from "@/core/types";
 import type { AlongResult } from "@/server/places";
 import { Icon, MODE_LABEL } from "./icons";
+import { Wordmark } from "./Logo";
 import { PlaceSearch, type PickedPlace } from "./PlaceSearch";
 import { DRAW_MS, STEP_DRAW, STEP_GAP } from "./RouteLayer";
 
@@ -31,12 +33,21 @@ function loadPlan(): Plan {
     const p = decodePlan(m[1]);
     if (p) return p;
   }
+  // The example is only shown when asked for (the landing page's "See an example").
+  if (new URLSearchParams(location.search).has("example")) return EXAMPLE_PLAN;
   try {
     const raw = localStorage.getItem(PLAN_KEY);
-    if (raw) return migratePlan(JSON.parse(raw) as Plan);
+    if (raw) {
+      const saved = migratePlan(JSON.parse(raw) as Plan);
+      if (!saved.example) return saved;
+    }
   } catch {}
-  return EXAMPLE_PLAN;
+  return EMPTY_PLAN;
 }
+
+const EMPTY_PLAN: Plan = { anchors: [], options: [], driveDefault: true };
+/** Quick names for a first life anchor. */
+const ANCHOR_IDEAS = ["Work", "Gym", "Partner’s place", "School", "Family"];
 
 function loadMap<T>(key: string): Map<string, T> {
   try {
@@ -96,9 +107,9 @@ export default function SettleApp() {
   const swatch = (a: Anchor) => anchorColor(a, anchors.indexOf(a));
   const swatchStyle = (a: Anchor) => ({ "--a": swatch(a).marker, "--ar": swatch(a).route, "--at": swatch(a).tab } as React.CSSProperties);
 
-  // Persist locally; drop a share hash once the plan has been loaded from it.
+  // Persist locally (never the untouched example, so it can't replace your own plan); drop a share hash once loaded.
   useEffect(() => {
-    try { localStorage.setItem(PLAN_KEY, JSON.stringify(plan)); } catch {}
+    if (!plan.example) try { localStorage.setItem(PLAN_KEY, JSON.stringify(plan)); } catch {}
     if (location.hash.startsWith("#s=")) history.replaceState(null, "", location.pathname + location.search);
   }, [plan]);
   useEffect(() => saveMap(LEGS_KEY, legs, 300), [legs]);
@@ -528,7 +539,7 @@ export default function SettleApp() {
 
   const places = (
     <>
-      <div className="sec">Your places · default way to get there</div>
+      <div className="sec">Life anchors · usual way to get there</div>
       <div className="nav">
         {anchors.map((a) => (
           <div key={a.id}>
@@ -567,7 +578,7 @@ export default function SettleApp() {
         {anchors.length < MAX_ANCHORS && (
           <button className="prow add" onClick={() => { setAdding(!adding); setEdit(null); }} aria-expanded={adding}>
             <span className="badge lg"><Icon name="plus" size={15} /></span>
-            <span className="t"><b>Add a place</b></span>
+            <span className="t"><b>Add a life anchor</b></span>
           </button>
         )}
         {adding && (
@@ -595,7 +606,7 @@ export default function SettleApp() {
     <div className="app">
       <aside className="side">
         <div className="head">
-          <h1 className="brand"><span className="logo"><Icon name="logo" size={16} /></span>Settle</h1>
+          <h1 className="brand"><Link href="/" aria-label="Settle home"><Wordmark size={22} mark={28} /></Link></h1>
           <div className="head-actions">
             <button className={`btn${running ? "" : " dark"}`} onClick={running ? skip : startCompare} disabled={!options.length || !anchors.length}>
               {running ? "Skip" : hasRun ? "Replay" : "Compare"}
@@ -606,28 +617,46 @@ export default function SettleApp() {
         <div className="side-scroll">
           {plan.example && (
             <div className="banner">
-              <span><b>This is an example.</b> Add your own homes and places, or start fresh.</span>
-              <button onClick={() => { setPlan({ anchors: [], options: [], driveDefault: true }); setEdit(null); setSelectedState(null); skip(); setHasRun(false); }}>Start fresh</button>
+              <span><b>This is an example.</b> Have a look around, then start your own.</span>
+              <a href="/compare">Start your own</a>
             </div>
           )}
-          {hasMaps && options.length < MAX_OPTIONS && (
-            <div className="addhome">
-              <PlaceSearch id="add-home" placeholder="Paste a TradeMe link or type an address" onPick={addOptionFromPlace} onLink={addOptionFromLink} />
+          {!anchors.length ? (
+            <>
+              <div className="onboard">
+                <span className="ob-step">Step 1 of 2</span>
+                <h2>Start with your life anchors</h2>
+                <p>The places that actually matter: work, the gym, your partner’s place, the kids’ school. Every home you add is measured against them.</p>
+                <div className="ob-ideas">
+                  {ANCHOR_IDEAS.map((n) => (
+                    <button key={n} onClick={() => { setDraft({ name: n, mode: "drive" }); setAdding(true); setEdit(null); }}>{n}</button>
+                  ))}
+                </div>
+              </div>
+              {places}
+            </>
+          ) : (
+            <>
+            {hasMaps && options.length < MAX_OPTIONS && (
+              <div className="addhome">
+                <PlaceSearch id="add-home" placeholder="Paste a TradeMe link or type an address" onPick={addOptionFromPlace} onLink={addOptionFromLink} />
+              </div>
+            )}
+            <div className="subhead">
+              <span>One-way travel times · weekday 8am</span>
             </div>
+            {running && (
+              <div className="status">
+                <span>{seq ? `Comparing · ${seq.i + 1} of ${seq.order.length} · best last` : "Getting routes…"}</span>
+              </div>
+            )}
+            {error && <p className="err" style={{ margin: "0 2px 10px" }}>{error}</p>}
+            {options.length ? options.map((o) => cmp.rows.find((r) => r.option.id === o.id)!).map(card) : <div className="empty"><b>Step 2 of 2 · Add the homes you’re considering</b><br />Paste a TradeMe link or type an address above. Settle works out the trip from each one to your anchors.</div>}
+            {!hasMaps && <p className="hint">Adding homes and places needs the Google Maps key (see README).</p>}
+              <div className="hr" />
+              {places}
+            </>
           )}
-          <div className="subhead">
-            <span>One-way travel times · weekday 8am</span>
-          </div>
-          {running && (
-            <div className="status">
-              <span>{seq ? `Comparing · ${seq.i + 1} of ${seq.order.length} · best last` : "Getting routes…"}</span>
-            </div>
-          )}
-          {error && <p className="err" style={{ margin: "0 2px 10px" }}>{error}</p>}
-          {options.length ? options.map((o) => cmp.rows.find((r) => r.option.id === o.id)!).map(card) : <div className="empty">Add the homes you&apos;re considering. Settle works out the trip from each one to your places.</div>}
-          {!hasMaps && <p className="hint">Adding homes and places needs the Google Maps key (see README).</p>}
-          <div className="hr" />
-          {places}
         </div>
       </aside>
       <main className="mapwrap">

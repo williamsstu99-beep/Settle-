@@ -308,3 +308,16 @@ button:disabled { cursor: not-allowed; }
 .stop { position: absolute; transform: translate(-50%, -50%); width: 22px; height: 22px; border-radius: 50%; background: #fff; border: 2px solid #2C3038; font-size: 11px; font-weight: 700; display: grid; place-items: center; box-shadow: 0 1px 4px rgba(20, 24, 31, 0.25); cursor: default; }
 .stop.hov { background: #2C3038; color: #fff; transform: translate(-50%, -50%) scale(1.15); }
 .stop-name { position: absolute; left: 28px; top: 50%; translate: 0 -50%; white-space: nowrap; background: #2C3038; color: #fff; font-size: 11.5px; font-weight: 600; padding: 3px 8px; border-radius: 6px; }
+
+/* ---------- brand + first-run ---------- */
+.brand a { display: inline-flex; text-decoration: none; color: inherit; }
+.wordmark { display: inline-flex; align-items: center; gap: 9px; font-family: var(--font-brand), var(--font-ui), sans-serif; font-weight: 800; letter-spacing: -0.03em; line-height: 1; color: #2C3038; }
+.banner a { font-weight: 600; color: var(--fg); white-space: nowrap; }
+.onboard { background: #F4F7FC; border: 1px solid #DDE8F8; border-radius: 14px; padding: 18px 18px 16px; margin: 4px 0 6px; display: flex; flex-direction: column; gap: 8px; }
+.onboard h2 { margin: 0; font-size: 19px; font-weight: 800; letter-spacing: -0.02em; color: #2C3038; }
+.onboard p { margin: 0; font-size: 13.5px; line-height: 1.55; color: var(--muted); }
+.ob-step { font-size: 12px; font-weight: 700; color: #2B4A80; }
+.ob-ideas { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 4px; }
+.ob-ideas button { background: #fff; border: 1px solid var(--line2); border-radius: 999px; padding: 7px 12px; font-size: 13px; font-weight: 600; color: #2C3038; }
+.ob-ideas button:hover { border-color: #6E93D6; color: #2B4A80; }
+.empty b { color: var(--fg); font-weight: 600; }

@@ -2,9 +2,16 @@
 
 Compare homes by how they fit your life. Add the places that matter (work, the gym, your partner's place), add the homes you're considering, and Settle shows real travel times and routes from each home to each place.
 
+## Pages
+
+- **`/`**: the landing page (`src/app/page.tsx`, styles in `src/app/landing.css`). The hero shows an animated illustration until you add a real screenshot at `public/landing/hero.png` (about 1200 × 1040, a listing with photos looks best); it switches automatically on the next build.
+- **`/compare`**: the app. It starts empty and asks for your life anchors first, then homes. `/compare?example=1` opens the example plan without replacing your own.
+
+The logo is `src/components/Logo.tsx` (the route "S"); the favicon is `src/app/icon.svg`.
+
 ## How it works
 
-- **Places** (`anchors` in code): where you need to get to, and how you travel there (transit, drive, bike or walk).
+- **Life anchors** (`anchors` in code): where you need to get to, and how you travel there (transit, drive, bike or walk).
 - **Homes** (`options` in code): added by typing an address, or by pasting a TradeMe link.
 - **Times for other modes:** route lines give each home's time in the chosen mode. When you select a home, the server asks Google's Route Matrix API for that home's durations in the other modes only (no route lines). These fill the mode buttons and the Walkable hint (walk ≤ 15 min).
 - **Per-route modes:** each home → place route uses the place's default mode unless you pick another on that home's card. Picking one fetches just that route and swaps it on the map.
@@ -38,7 +45,7 @@ cp .env.example .env.local   # then fill it in (see below)
 npm run dev                  # http://localhost:3000
 ```
 
-Without keys the app still opens with an example plan, but the map, address search and travel times need Google.
+Without keys the landing page and app still open, but the map, address search and travel times need Google.
 
 ### Google Maps Platform
 
