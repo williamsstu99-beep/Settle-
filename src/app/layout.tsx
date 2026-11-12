@@ -1,8 +1,8 @@
 import type { Metadata, Viewport } from "next";
-import { Instrument_Sans } from "next/font/google";
+import { Inter } from "next/font/google";
 import "./globals.css";
 
-const ui = Instrument_Sans({ subsets: ["latin"], variable: "--font-ui", display: "swap" });
+const ui = Inter({ subsets: ["latin"], variable: "--font-ui", display: "swap", weight: ["400", "500", "600", "700", "800"] });
 
 export const metadata: Metadata = {
   title: "Settle",

@@ -8,8 +8,8 @@ Compare homes by how they fit your life. Add the places that matter (work, the g
 - **Homes** (`options` in code): added by typing an address, or by pasting a TradeMe link.
 - **Times for every mode:** as soon as homes and places are set, the server asks Google's Route Matrix API for durations from every home to every place by transit, drive, bike and walk (no route lines). These fill the mode buttons, the daily totals (return trip to each place) and the Walkable hint (walk ≤ 15 min).
 - **Per-route modes:** each home → place route uses the place's default mode unless you pick another on that home's card. Picking one fetches just that route and swaps it on the map.
-- **Map:** every home is a card on a stem above its location dot (compact, or expanded with photo for the selected home); every place is a card in its own permanent colour showing the trip time from the selected home. Only the selected home's routes are drawn, in each place's colour, leaving the home's dot and arriving at each place's dot. Cards are placed so they don't overlap (`src/core/layout.ts`).
-- **Compare:** fetches every home's routes, then selects each home in turn from most to least daily travel, so the best home is shown last and stays selected. Skip jumps to the end; Replay runs it again. "Show all routes" draws the other homes' routes faintly underneath.
+- **Map:** each home is a charcoal hub at its exact location with a card docked beside it (no connector line); the selected home's card expands, with its photo when there is one. Each place is a marker in its own colour (5-colour palette, max 5 places) with a tabbed card showing the time from the selected home, a rank badge (Fastest / 2nd fastest of 3 / Cheapest), a mode detail line and, for transit, Google's fare when returned. Every home's routes are drawn thin grey; the selected home's are drawn in place colours from the hub to each marker. Card sides (`src/core/layout.ts`) are only recalculated when homes, places, the selection or the zoom level change, never on pan, and keep their side while it's clear.
+- **Compare:** selects each home in turn from most to least daily travel, so the best home is shown last and stays selected. Skip during, Replay after; reduced motion skips straight to the end.
 - **Share:** the whole plan is encoded in the link (`#s=…`). Nothing is stored on the server.
 
 The engine is deliberately general (anchors and options, not flats and workplaces), so other uses (buying, jobs, schools, relocation) are new screens rather than a rebuild.
@@ -39,7 +39,7 @@ Without keys the app still opens with an example plan, but the map, address sear
 ### Google Maps Platform
 
 1. Create a project at [console.cloud.google.com](https://console.cloud.google.com) and turn on billing (Google includes a monthly free allowance per API).
-2. Enable **Maps JavaScript API**, **Places API (New)** and **Routes API** (the Routes API covers both route lines and the route matrix).
+2. Enable **Maps JavaScript API**, **Places API (New)** and **Routes API** (the Routes API covers both route lines and the route matrix). Optionally enable the **Elevation API** and allow it on the server key for "Flat / Some hills / Hilly" on bike and walk routes.
 3. Create two API keys:
    - **Browser key** → `NEXT_PUBLIC_GOOGLE_MAPS_API_KEY`. Restrict it to *Websites* (your domains, plus `localhost:3000` for development) and to the Maps JavaScript and Places APIs.
    - **Server key** → `GOOGLE_MAPS_SERVER_KEY`. Restrict it to the Routes API only.
@@ -54,7 +54,8 @@ Register an application at the [TradeMe developer site](https://developer.tradem
 - Route lines and matrix times are cached for 3 days by rounded coordinates and mode, and in the browser, so repeat comparisons and switching back to a mode are free.
 - The matrix call costs one element per home × place × mode (e.g. 3 homes × 3 places × 4 modes = 36). Transit and traffic-aware driving elements are billed at a higher tier than walk and bike.
 - Routes are only requested when someone presses Compare, and only for pairs not already known.
-- Limits: 6 homes and 8 places per plan, 48 pairs per request, 30 comparisons a minute per client.
+- Drive routes make two extra duration-only requests (best and worst case at peak) for the "5–9 min at peak" line; bike and walk routes make one Elevation request if that API is enabled. All cached with the route.
+- Limits: 6 homes and 5 places per plan, 48 pairs per request, 30 comparisons a minute per client.
 
 The cache is in memory per server instance; move it to Redis/Vercel KV when traffic grows (same interface in `src/server/cache.ts`).
 

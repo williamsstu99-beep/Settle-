@@ -4,7 +4,7 @@ import { APIProvider } from "@vis.gl/react-google-maps";
 import dynamic from "next/dynamic";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { compare, effectiveMode, formatPrice, legKey, pairKey, type LegView, type OptionSummary } from "@/core/compare";
-import { anchorColor, decodePlan, encodePlan, EXAMPLE_PLAN, MAX_ANCHORS, MAX_OPTIONS, newId, nextAnchorColor, OPTION_COLORS, type Plan } from "@/core/plan";
+import { anchorColor, decodePlan, encodePlan, EXAMPLE_PLAN, letterOf, MAX_ANCHORS, MAX_OPTIONS, newId, nextAnchorColor, type Plan } from "@/core/plan";
 import type { Anchor, LatLng, Leg, Mode, Option, Time } from "@/core/types";
 import { ANCHOR_ICONS, Icon, MODE_LABEL } from "./icons";
 import { PlaceSearch, type PickedPlace } from "./PlaceSearch";
@@ -73,7 +73,6 @@ export default function SettleApp() {
   const [pending, setPending] = useState<string[] | null>(null); // compare order, waiting for routes
   const [hasRun, setHasRun] = useState(false);
   const [epoch, setEpoch] = useState(0); // new value = redraw every route (Compare / Replay)
-  const [showAll, setShowAll] = useState(false);
   const [reduceMotion] = useState(() => matchMedia("(prefers-reduced-motion: reduce)").matches);
   const [edit, setEdit] = useState<string | null>(null);
   const [adding, setAdding] = useState(false);
@@ -84,7 +83,9 @@ export default function SettleApp() {
 
   const { anchors, options } = plan;
   const overrides = useMemo(() => plan.overrides ?? {}, [plan.overrides]);
-  const colorOf = useCallback((id: string) => OPTION_COLORS[Math.max(0, options.findIndex((o) => o.id === id)) % OPTION_COLORS.length], [options]);
+  const letter = useCallback((id: string) => letterOf(Math.max(0, options.findIndex((o) => o.id === id))), [options]);
+  const swatch = (a: Anchor) => anchorColor(a, anchors.indexOf(a));
+  const swatchStyle = (a: Anchor) => ({ "--a": swatch(a).marker, "--ar": swatch(a).route, "--at": swatch(a).tab } as React.CSSProperties);
 
   // Persist locally; drop a share hash once the plan has been loaded from it.
   useEffect(() => {
@@ -132,7 +133,8 @@ export default function SettleApp() {
   const selected = seq ? seq.order[seq.i] : selectedState && options.some((o) => o.id === selectedState) ? selectedState : (cmp.rows[0]?.option.id ?? null);
 
   /* ---------- route lines, only for the mode chosen per pair: the selected home, or every home for Compare ---------- */
-  const scope = useMemo(() => (pending || seq || showAll ? options : options.filter((o) => o.id === selected)), [pending, seq, showAll, options, selected]);
+  // Every home's routes are shown (grey for homes that aren't selected), so fetch them all; results are cached.
+  const scope = options;
   const legsMissing = useMemo(
     () =>
       hasMapsKey
@@ -300,6 +302,17 @@ export default function SettleApp() {
     if (adding) addAnchorAt(p, "Pinned place");
   };
   const onAnchorClick = (id: string) => setEdit((e) => (e === id ? null : id));
+  /** The selected card's chevron: open its listing, or bring its panel card into view. */
+  const showDetail = (id: string) => {
+    const o = options.find((x) => x.id === id);
+    const url = o?.source.kind === "trademe" ? o.source.url : o?.source.kind === "feed" ? o.source.url : undefined;
+    if (url) {
+      window.open(url, "_blank", "noopener,noreferrer");
+      return;
+    }
+    setCollapsed(false);
+    requestAnimationFrame(() => document.getElementById(`card-${id}`)?.scrollIntoView({ behavior: "smooth", block: "nearest" }));
+  };
   const running = !!(seq || pending);
 
   const hasMaps = hasMapsKey;
@@ -329,13 +342,13 @@ export default function SettleApp() {
   };
 
   const card = (r: OptionSummary) => {
-    const o = r.option, isSel = selected === o.id, open = isSel && !collapsed, col = colorOf(o.id);
+    const o = r.option, isSel = selected === o.id, open = isSel && !collapsed;
     const listing = o.source.kind === "trademe" ? o.source.url : o.source.kind === "feed" ? o.source.url : undefined;
     return (
-      <div key={o.id} className={`card${isSel ? " sel" : ""}${open ? " open" : ""}`} style={{ "--c": col } as React.CSSProperties}>
+      <div key={o.id} id={`card-${o.id}`} className={`card${isSel ? " sel" : ""}${open ? " open" : ""}`}>
         <button className="ch" aria-expanded={open} onClick={() => selectHome(o.id, true)}>
           <span className="ch-top">
-            <span className="dot" />
+            <span className="letter">{letter(o.id)}</span>
             <span className="t">
               <b>{o.title}{r.leastTravel && <span className="tag">Least travel</span>}</b>
               <span>{[o.subtitle, o.price ? formatPrice(o.price) : null, o.bedrooms ? `${o.bedrooms} bed` : null].filter(Boolean).join(" · ")}</span>
@@ -348,7 +361,7 @@ export default function SettleApp() {
           <span className="ch-chips">
             <span className="chips">
               {r.legs.map((l, ai) => (
-                <span key={l.anchor.id} className={`chip${typeof l.minutes === "number" && cmp.fastest[ai] === l.minutes ? " best" : ""}`} title={`${l.anchor.name} · ${MODE_LABEL[l.mode]}`} style={{ "--a": anchorColor(l.anchor, anchors.indexOf(l.anchor)) } as React.CSSProperties}>
+                <span key={l.anchor.id} className={`chip${typeof l.minutes === "number" && cmp.fastest[ai] === l.minutes ? " best" : ""}`} title={`${l.anchor.name} · ${MODE_LABEL[l.mode]}`} style={swatchStyle(l.anchor)}>
                   <Icon name={l.anchor.icon} size={12} />
                   {l.minutes === undefined ? "…" : l.minutes === null ? "–" : `${l.minutes} m`}
                   {l.overridden && <i className="ov" />}
@@ -363,7 +376,7 @@ export default function SettleApp() {
             {r.legs.map((l) => {
               const k = pairKey(o.id, l.anchor.id);
               return (
-                <div key={l.anchor.id} className="leg" style={{ "--a": anchorColor(l.anchor, anchors.indexOf(l.anchor)) } as React.CSSProperties}>
+                <div key={l.anchor.id} className="leg" style={swatchStyle(l.anchor)}>
                   <div className="leg-h">
                     <span className="badge a"><Icon name={l.anchor.icon} size={13} /></span>
                     <span className="t">
@@ -398,7 +411,7 @@ export default function SettleApp() {
         {anchors.map((a) => (
           <div key={a.id}>
             <button className="prow" aria-expanded={edit === a.id} onClick={() => { setEdit(edit === a.id ? null : a.id); setAdding(false); }}>
-              <span className="badge lg a" style={{ "--a": anchorColor(a, anchors.indexOf(a)) } as React.CSSProperties}><Icon name={a.icon} size={15} /></span>
+              <span className="badge lg a" style={swatchStyle(a)}><Icon name={a.icon} size={15} /></span>
               <span className="t">
                 <b>{a.name}</b>
                 <span>{MODE_LABEL[a.mode]} by default</span>
@@ -477,11 +490,7 @@ export default function SettleApp() {
           )}
           <div className="subhead">
             <span>Weekday 8am · return trips per day</span>
-            <label className="switch">
-              <input type="checkbox" checked={showAll} onChange={(e) => setShowAll(e.target.checked)} />
-              <span aria-hidden="true" />
-              Show all routes
-            </label>
+            <span>Sort: travel</span>
           </div>
           {running && (
             <div className="status">
@@ -503,12 +512,11 @@ export default function SettleApp() {
               options={options}
               overrides={overrides}
               rows={cmp.rows}
-              colorOf={colorOf}
               legs={legs}
               selected={selected}
               epoch={epoch}
-              showAll={showAll}
               instant={reduceMotion}
+              onDetail={showDetail}
               fitKey={fitKey}
               dropMode={adding}
               onSelect={(id) => selectHome(id)}

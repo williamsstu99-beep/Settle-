@@ -124,3 +124,37 @@ describe("route matrix", () => {
     expect(calls[1].origins).toHaveLength(1);
   });
 });
+
+import { parseMoney, totalAscent } from "./google-routes";
+
+describe("place card extras", () => {
+  it("reads transit fares, stops and headway, and skips missing or zero fares", () => {
+    expect(parseMoney({ currencyCode: "NZD", units: "4", nanos: 200000000 })).toEqual({ amount: 4.2, currency: "NZD" });
+    expect(parseMoney({ currencyCode: "NZD", units: "0" })).toBeUndefined();
+    expect(parseMoney(undefined)).toBeUndefined();
+    const r = parseRoute({ routes: [{ duration: "1800s", distanceMeters: 1, polyline: { encodedPolyline: "abc" }, travelAdvisory: { transitFare: { currencyCode: "NZD", units: "3", nanos: 500000000 } },
+      legs: [{ steps: [{ travelMode: "TRANSIT", polyline: { encodedPolyline: "_p~iF~ps|U" }, transitDetails: { transitLine: { nameShort: "75" }, stopDetails: { departureStop: { name: "Britomart" } }, headway: "600s" } }] }] }] });
+    expect(r.status === "ok" && [r.fare, r.steps?.[0].from, r.steps?.[0].headwayMin]).toEqual([{ amount: 3.5, currency: "NZD" }, "Britomart", 10]);
+  });
+  it("adds up climbing only", () => {
+    expect(totalAscent([10, 20, 15, 40, 40.5, 30])).toBe(35);
+    expect(totalAscent([])).toBe(0);
+  });
+  it("asks for a peak range on drives and terrain on walks, and survives them failing", async () => {
+    const seen: string[] = [];
+    vi.stubGlobal("fetch", vi.fn(async (url: string, init?: { body?: string }) => {
+      if (url.includes("elevation")) { seen.push("elevation"); return new Response(JSON.stringify({ status: "REQUEST_DENIED" })); }
+      const body = init?.body ? JSON.parse(init.body) : {};
+      seen.push(body.trafficModel ?? body.travelMode);
+      const secs = body.trafficModel === "OPTIMISTIC" ? 300 : body.trafficModel === "PESSIMISTIC" ? 540 : 420;
+      return new Response(JSON.stringify({ routes: [{ duration: `${secs}s`, distanceMeters: 1, polyline: { encodedPolyline: "_p~iF~ps|U" } }] }));
+    }));
+    const { computeRoute } = await import("./google-routes");
+    const d = await computeRoute({ lat: 1.5, lng: 1 }, { lat: 2, lng: 2 }, "drive", dep, "k", "x1");
+    expect(d.status === "ok" && d.peak).toEqual([5, 9]);
+    const w = await computeRoute({ lat: 1.5, lng: 1 }, { lat: 2, lng: 2 }, "walk", dep, "k", "x2");
+    expect(w.status === "ok" && w.ascent).toBeUndefined(); // Elevation API not enabled → just the mode name
+    expect(seen).toEqual(expect.arrayContaining(["DRIVE", "OPTIMISTIC", "PESSIMISTIC", "WALK", "elevation"]));
+    vi.unstubAllGlobals();
+  });
+});
