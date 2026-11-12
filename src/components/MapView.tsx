@@ -21,11 +21,11 @@ const MAP_ID = process.env.NEXT_PUBLIC_GOOGLE_MAP_ID;
  * the side chooser uses these to keep cards apart.
  */
 export const GEO = {
-  hub: { sel: 68, unsel: 44 },
-  tuck: 8, // cards tuck this far under their hub
-  sel: { w: 304, hPhoto: 252, hNoPhoto: 148 },
-  unsel: { w: 208, h: 80 },
-  anchor: { w: 280, h: 104, hFare: 124, marker: 28 },
+  hub: { sel: 56, unsel: 36 },
+  tuck: 7, // cards tuck this far under their hub
+  sel: { w: 256, hPhoto: 230, hNoPhoto: 132 },
+  unsel: { w: 176, h: 76 },
+  anchor: { w: 228, h: 92, hFare: 108, marker: 24 },
 };
 
 const vehicleIcon = (v?: string): IconName => (v && /RAIL|TRAIN|SUBWAY|TRAM|METRO/.test(v) ? "train" : v === "FERRY" ? "ferry" : "transit");
@@ -54,19 +54,32 @@ type Props = {
   onMapClick: (p: LatLng) => void;
 };
 
+/**
+ * Frame every home, place and route in one view, with room for the cards.
+ * Padding scales with the map's size so small screens never zoom out to the world.
+ */
+export function fitPadding(w: number, h: number) {
+  return {
+    top: Math.round(Math.min(110, h * 0.16)),
+    bottom: Math.round(Math.min(90, h * 0.12)),
+    left: Math.round(Math.min(170, w * 0.18)),
+    right: Math.round(Math.min(190, w * 0.2)),
+  };
+}
+
 function FitBounds({ points, fitKey }: { points: LatLng[]; fitKey: string }) {
   const map = useMap();
   useEffect(() => {
     if (!map || !points.length) return;
     if (points.length === 1) {
       map.panTo(points[0]);
-      map.setZoom(14);
+      map.setZoom(15);
       return;
     }
     const b = new google.maps.LatLngBounds();
     points.forEach((p) => b.extend(p));
-    // Room for cards beside hubs and place markers.
-    map.fitBounds(b, { top: 150, bottom: 150, left: 200, right: 240 });
+    const div = map.getDiv();
+    map.fitBounds(b, fitPadding(div.offsetWidth || 800, div.offsetHeight || 600));
     // fitKey decides when we refit; points are read fresh at that moment.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [map, fitKey]);
@@ -136,7 +149,7 @@ const HomeMarker = memo(function HomeMarker({ o, letter, row, selected, side, gr
         </div>
       </div>
       <button className={`hub${selected ? " sel" : ""}`} onClick={() => onSelect(o.id)} aria-label={`Select ${o.title}`}>
-        <Icon name="house2" size={selected ? 38 : 24} />
+        <Icon name="house2" size={selected ? 32 : 20} />
       </button>
     </div>
   );
@@ -173,7 +186,7 @@ const PlaceMarker = memo(function PlaceMarker({ a, sw, side, view, badge, countK
           {fare && <div className="afare">{fare}</div>}
         </div>
       </div>
-      <span className="amark"><Icon name="anchor" size={15} /></span>
+      <span className="amark"><Icon name="anchor" size={13} /></span>
     </div>
   );
 });
@@ -202,6 +215,7 @@ export default function MapView(p: Props) {
           const rides = isSel ? (steps ?? []).filter((s) => s.kind === "ride" && s.line).map((s) => ({ line: s.line!, vehicle: s.vehicle, at: midpoint(s.path)! })) : [];
           return [{
             key: `${isSel ? p.epoch : 0}:${legKey(o.id, a.id, mode)}`,
+            pair: `${o.id}|${a.id}`,
             optionId: o.id,
             color: anchorColor(a, ai).route,
             parts: pieces.map((x) => ({ m: measure(x.path), dashed: x.dashed })),
@@ -251,7 +265,13 @@ export default function MapView(p: Props) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [map, zoom, idsKey, routeKey]);
 
-  const fitPoints = useMemo(() => [...options.map((o) => o.location), ...anchors.map((a) => a.location)], [options, anchors]);
+  // Frame the routes themselves (they can bulge beyond the dots), not just homes and places.
+  const fitPoints = useMemo(
+    () => [...options.map((o) => o.location), ...anchors.map((a) => a.location), ...routes.flatMap((r) => r.parts.flatMap((x) => x.m.path.filter((_, i) => i % 4 === 0)))],
+    [options, anchors, routes],
+  );
+  // Refit when routes for a new home or place arrive (not on selection or a single mode change).
+  const routePairs = useMemo(() => [...new Set(routes.map((r) => r.pair))].sort().join(","), [routes]);
   const summary = useMemo(() => new Map(rows.map((r) => [r.option.id, r])), [rows]);
   const selRow = selected ? summary.get(selected) : undefined;
   const growKey = `${selected}:${p.epoch}`;
@@ -273,7 +293,7 @@ export default function MapView(p: Props) {
       }}
       style={{ position: "absolute", inset: 0 }}
     >
-      <FitBounds points={fitPoints} fitKey={p.fitKey} />
+      <FitBounds points={fitPoints} fitKey={`${p.fitKey}|${routePairs}`} />
       <RouteLayer routes={drawRoutes} instant={p.instant} />
 
       {routes
