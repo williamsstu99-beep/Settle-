@@ -140,7 +140,7 @@ describe("place card extras", () => {
     expect(totalAscent([10, 20, 15, 40, 40.5, 30])).toBe(35);
     expect(totalAscent([])).toBe(0);
   });
-  it("asks for a peak range on drives and terrain on walks, and survives them failing", async () => {
+  it("leaves the peak range out of drive routes, gets it on demand (cached), and terrain on walks survives failing", async () => {
     const seen: string[] = [];
     vi.stubGlobal("fetch", vi.fn(async (url: string, init?: { body?: string }) => {
       if (url.includes("elevation")) { seen.push("elevation"); return new Response(JSON.stringify({ status: "REQUEST_DENIED" })); }
@@ -149,9 +149,14 @@ describe("place card extras", () => {
       const secs = body.trafficModel === "OPTIMISTIC" ? 300 : body.trafficModel === "PESSIMISTIC" ? 540 : 420;
       return new Response(JSON.stringify({ routes: [{ duration: `${secs}s`, distanceMeters: 1, polyline: { encodedPolyline: "_p~iF~ps|U" } }] }));
     }));
-    const { computeRoute } = await import("./google-routes");
+    const { computeRoute, peakRange } = await import("./google-routes");
     const d = await computeRoute({ lat: 1.5, lng: 1 }, { lat: 2, lng: 2 }, "drive", dep, "k", "x1");
-    expect(d.status === "ok" && d.peak).toEqual([5, 9]);
+    expect(d.status === "ok" && d.peak).toBeUndefined();
+    expect(seen).not.toContain("OPTIMISTIC");
+    expect(await peakRange({ lat: 1.5, lng: 1 }, { lat: 2, lng: 2 }, dep, "k", "x1")).toEqual([5, 9]);
+    const asked = seen.length;
+    await peakRange({ lat: 1.5, lng: 1 }, { lat: 2, lng: 2 }, dep, "k", "x1");
+    expect(seen).toHaveLength(asked);
     const w = await computeRoute({ lat: 1.5, lng: 1 }, { lat: 2, lng: 2 }, "walk", dep, "k", "x2");
     expect(w.status === "ok" && w.ascent).toBeUndefined(); // Elevation API not enabled → just the mode name
     expect(seen).toEqual(expect.arrayContaining(["DRIVE", "OPTIMISTIC", "PESSIMISTIC", "WALK", "elevation"]));
