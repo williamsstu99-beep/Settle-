@@ -76,6 +76,8 @@ export default function SettleApp() {
   const [reduceMotion] = useState(() => matchMedia("(prefers-reduced-motion: reduce)").matches);
   const [edit, setEdit] = useState<string | null>(null);
   const [adding, setAdding] = useState(false);
+  // The new place being set up: name and icon first, then the address.
+  const [draft, setDraft] = useState<{ name: string; icon: Anchor["icon"]; mode: Mode }>({ name: "", icon: "work", mode: "transit" });
   const [error, setError] = useState<string | null>(null);
   const [legErrors, setLegErrors] = useState<Record<string, string>>({});
   const [copied, setCopied] = useState(false);
@@ -212,12 +214,15 @@ export default function SettleApp() {
   }, [seq]);
 
   /* ---------- actions ---------- */
-  const addAnchorAt = (location: LatLng, name: string, address?: string) => {
+  /** Create the place from the draft. Its name is what you typed (or the icon's label), never the address. */
+  const addAnchorAt = (location: LatLng, address?: string) => {
     if (anchors.length >= MAX_ANCHORS) return;
-    const a: Anchor = { id: newId(), name: name.slice(0, 40), icon: "other", location, address, mode: "transit", color: nextAnchorColor(anchors) };
+    const name = draft.name.trim() || ANCHOR_ICONS.find((x) => x.id === draft.icon)?.label || "Place";
+    const a: Anchor = { id: newId(), name: name.slice(0, 40), icon: draft.icon, location, address, mode: draft.mode, color: nextAnchorColor(anchors) };
     update((p) => ({ ...p, anchors: [...p.anchors, a] }));
     setAdding(false);
-    setEdit(a.id);
+    setDraft({ name: "", icon: "work", mode: "transit" });
+    setFitKey(newId());
   };
   const patchAnchor = (id: string, patch: Partial<Anchor>) => update((p) => ({ ...p, anchors: p.anchors.map((a) => (a.id === id ? { ...a, ...patch } : a)) }));
   const addOption = (o: Option) => {
@@ -299,7 +304,7 @@ export default function SettleApp() {
     }
   };
   const onMapClick = (p: LatLng) => {
-    if (adding) addAnchorAt(p, "Pinned place");
+    if (adding) addAnchorAt(p);
   };
   const onAnchorClick = (id: string) => setEdit((e) => (e === id ? null : id));
   /** The selected card's chevron: open its listing, or bring its panel card into view. */
@@ -420,15 +425,16 @@ export default function SettleApp() {
             </button>
             {edit === a.id && (
               <div className="edit">
-                <input className="text" value={a.name} maxLength={40} aria-label="Name" onChange={(e) => patchAnchor(a.id, { name: e.target.value })} onKeyDown={(e) => e.key === "Enter" && setEdit(null)} />
-                {hasMaps ? (
-                  <PlaceSearch id={`move-${a.id}`} placeholder={a.address ? `Move: ${a.address}` : "Search for the address"} onPick={(pl) => update((p) => ({ ...p, anchors: p.anchors.map((x) => (x.id === a.id ? { ...x, id: newId(), location: pl.location, address: pl.address ?? pl.title } : x)) }))} />
-                ) : (
-                  a.address && <p className="hint">{a.address}</p>
+                <label className="flabel" htmlFor={`name-${a.id}`}>Name <span>shown on the map</span></label>
+                <input id={`name-${a.id}`} className="text" value={a.name} maxLength={40} onChange={(e) => patchAnchor(a.id, { name: e.target.value })} onKeyDown={(e) => e.key === "Enter" && setEdit(null)} />
+                <label className="flabel" htmlFor={`move-${a.id}`}>Address</label>
+                {a.address && <p className="hint addr">{a.address}</p>}
+                {hasMaps && (
+                  <PlaceSearch id={`move-${a.id}`} placeholder="Search to change the address" onPick={(pl) => update((p) => ({ ...p, anchors: p.anchors.map((x) => (x.id === a.id ? { ...x, id: newId(), location: pl.location, address: pl.address ?? [pl.title, pl.subtitle].filter(Boolean).join(", ") } : x)) }))} />
                 )}
                 <div className="icons" role="group" aria-label="Icon">
                   {ANCHOR_ICONS.map((ic) => (
-                    <button key={ic.id} aria-pressed={a.icon === ic.id} title={ic.label} aria-label={ic.label} onClick={() => patchAnchor(a.id, { icon: ic.id, name: a.name === "Pinned place" || ANCHOR_ICONS.some((x) => x.label === a.name) ? ic.label : a.name })}>
+                    <button key={ic.id} aria-pressed={a.icon === ic.id} title={ic.label} aria-label={ic.label} onClick={() => patchAnchor(a.id, { icon: ic.id, name: ANCHOR_ICONS.some((x) => x.label === a.name) ? ic.label : a.name })}>
                       <Icon name={ic.id} size={14} />
                     </button>
                   ))}
@@ -456,8 +462,26 @@ export default function SettleApp() {
         )}
         {adding && (
           <div className="edit">
-            {hasMaps && <PlaceSearch id="add-place" autoFocus placeholder="Search an address or place" onPick={(pl) => addAnchorAt(pl.location, pl.title, pl.address)} />}
+            <label className="flabel" htmlFor="new-name">Name <span>e.g. Work, Gym, Mum’s place</span></label>
+            <input id="new-name" className="text" autoFocus value={draft.name} maxLength={40} placeholder={ANCHOR_ICONS.find((x) => x.id === draft.icon)?.label} onChange={(e) => setDraft({ ...draft, name: e.target.value })} />
+            <div className="icons" role="group" aria-label="Icon">
+              {ANCHOR_ICONS.map((ic) => (
+                <button key={ic.id} aria-pressed={draft.icon === ic.id} title={ic.label} aria-label={ic.label} onClick={() => setDraft({ ...draft, icon: ic.id })}>
+                  <Icon name={ic.id} size={14} />
+                </button>
+              ))}
+            </div>
+            <div className="seg" role="group" aria-label="Usual way to get there">
+              {MODES.map((m) => (
+                <button key={m} aria-pressed={draft.mode === m} onClick={() => setDraft({ ...draft, mode: m })}>
+                  <Icon name={m} size={14} />{MODE_LABEL[m]}
+                </button>
+              ))}
+            </div>
+            <label className="flabel" htmlFor="add-place">Address</label>
+            {hasMaps && <PlaceSearch id="add-place" placeholder="Search the address" onPick={(pl) => addAnchorAt(pl.location, pl.address ?? [pl.title, pl.subtitle].filter(Boolean).join(", "))} />}
             <p className="hint">{hasMaps ? "Or click the map to drop a pin." : "Click the map to drop a pin."}</p>
+            <div className="edit-foot"><span /><button className="link" onClick={() => setAdding(false)}>Cancel</button></div>
           </div>
         )}
       </div>
@@ -524,6 +548,9 @@ export default function SettleApp() {
               onMapClick={onMapClick}
             />
             {adding && <div className="droptip">Click the map to drop a pin · or search on the left</div>}
+            <button className="fitbtn" onClick={() => setFitKey(newId())} aria-label="Show every home, place and route">
+              <Icon name="expand" size={15} />Show all
+            </button>
           </>
         ) : (
           <div className="nomap">

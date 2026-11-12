@@ -17,6 +17,7 @@ const P = {
   house: <><path d="M2.5 7.5 8 3l5.5 4.5v6h-11z" /><path d="M6.5 13.5V10h3v3.5" /></>,
   apartment: <><rect x="3.5" y="2" width="9" height="12" rx="1" /><path d="M6 5h1M9 5h1M6 8h1M9 8h1M7 14v-2.5h2V14" /></>,
   x: <path d="M4 4l8 8M12 4l-8 8" />,
+  expand: <path d="M2.5 6V2.5H6M10 2.5h3.5V6M13.5 10v3.5H10M6 13.5H2.5V10" />,
   anchor: <><circle cx="8" cy="3.4" r="1.6" /><path d="M8 5v9M5.2 7.6h5.6M2.6 9.6A5.4 5.4 0 0 0 8 14a5.4 5.4 0 0 0 5.4-4.4" /></>,
   house2: <><path d="M2.6 7.4 8 2.8l5.4 4.6V13a.8.8 0 0 1-.8.8H3.4a.8.8 0 0 1-.8-.8z" /><path d="M6.4 13.8V9.6h3.2v4.2" /></>,
   plus: <path d="M8 3.5v9M3.5 8h9" />,
