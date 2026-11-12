@@ -177,8 +177,22 @@ async function ascentFor(polyline: string, apiKey: string): Promise<number | und
   }
 }
 
-/** Drive: best and worst case at the peak departure (two extra duration-only requests). */
-async function peakRange(origin: LatLng, destination: LatLng, departure: Date, apiKey: string): Promise<[number, number] | undefined> {
+const peakCache = new TtlCache<[number, number] | null>(3 * 24 * 3600 * 1000, 5000);
+
+/**
+ * Drive: best and worst case at the peak departure (two extra duration-only
+ * requests). Only asked for the selected home's drives, not every route.
+ */
+export async function peakRange(origin: LatLng, destination: LatLng, departure: Date, apiKey: string, slot = "peak"): Promise<[number, number] | undefined> {
+  const key = routeCacheKey(origin, destination, "drive", slot);
+  const hit = peakCache.get(key);
+  if (hit !== undefined) return hit ?? undefined;
+  const r = await fetchPeakRange(origin, destination, departure, apiKey);
+  peakCache.set(key, r ?? null);
+  return r;
+}
+
+async function fetchPeakRange(origin: LatLng, destination: LatLng, departure: Date, apiKey: string): Promise<[number, number] | undefined> {
   try {
     const one = async (trafficModel: "OPTIMISTIC" | "PESSIMISTIC") => {
       const res = await fetch(ENDPOINT, {
@@ -246,8 +260,7 @@ export async function computeRoute(
   }
   const result = parseResponse(await res.json());
   if (result.status === "ok") {
-    // Extras for the place cards; each is optional and never fails the route.
-    if (mode === "drive") result.peak = await peakRange(origin, destination, departure, apiKey);
+    // Terrain for the place cards; optional and never fails the route. (The drive peak range is fetched separately.)
     if (mode === "bike" || mode === "walk") result.ascent = await ascentFor(result.polyline, apiKey);
   }
   cache.set(key, result);

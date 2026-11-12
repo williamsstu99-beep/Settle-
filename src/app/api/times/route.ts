@@ -11,13 +11,16 @@ const Body = z.object({
   timeZone: z.string().max(64).default("UTC"),
   options: z.array(z.object({ id: z.string().max(80), location: point })).min(1).max(6),
   anchors: z.array(z.object({ id: z.string().max(80), location: point })).min(1).max(8),
+  /** Only the modes the client still needs (defaults to all four). */
+  modes: z.array(z.enum(["transit", "drive", "bike", "walk"])).min(1).max(4).optional(),
 });
 
 const limiter = new RateLimiter(30, 60_000);
 
 /**
- * POST: travel times for every home × place × mode (transit, drive, bike,
- * walk), durations only. One Route Matrix call per mode, cached per pair.
+ * POST: travel times for every home × place × requested mode, durations
+ * only. One Route Matrix call per mode, cached per pair. The app asks only for
+ * the selected home and only for modes it doesn't already have from routes.
  */
 export async function POST(request: Request) {
   const apiKey = serverKey();
@@ -35,10 +38,11 @@ export async function POST(request: Request) {
   }
 
   const departure = nextPeakDeparture(body.timeZone);
+  const modes = body.modes ? MODES.filter((m) => body.modes!.includes(m)) : MODES;
   const origins = body.options.map((o) => o.location), dests = body.anchors.map((a) => a.location);
   try {
-    const grids = await Promise.all(MODES.map((m) => computeTimes(origins, dests, m, departure, apiKey)));
-    const times: Time[] = MODES.flatMap((mode, mi) =>
+    const grids = await Promise.all(modes.map((m) => computeTimes(origins, dests, m, departure, apiKey)));
+    const times: Time[] = modes.flatMap((mode, mi) =>
       body.options.flatMap((o, oi) =>
         body.anchors.map((a, ai): Time => {
           const t = grids[mi][oi][ai];

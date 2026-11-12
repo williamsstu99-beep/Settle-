@@ -106,21 +106,30 @@ export default function SettleApp() {
 
   const update = (fn: (p: Plan) => Plan) => setPlan((p) => ({ ...fn(p), example: false }));
 
-  /* ---------- times for every mode (batch, no route lines) ---------- */
-  const timesMissing = useMemo(
-    () => options.some((o) => anchors.some((a) => MODES.some((m) => !times.has(legKey(o.id, a.id, m))))),
-    [options, anchors, times],
-  );
+  const cmp = useMemo(() => compare(options, anchors, legs, times, overrides), [options, anchors, legs, times, overrides]);
+
+  // Exactly one home is always selected: the one you picked, the one the sequence is on, or the best.
+  // Nothing is selected until you pick a home (or Compare finishes on the best one).
+  const selected = seq ? seq.order[seq.i] : selectedState && options.some((o) => o.id === selectedState) ? selectedState : null;
+
+  /* ---------- times for the other modes (mode buttons), selected home only ---------- */
+  // Route lines already give the chosen mode's time for every home, so the matrix is only
+  // asked for the selected home and only for modes that aren't known yet. Cached per pair.
+  const timesWanted = useMemo(() => {
+    const o = options.find((x) => x.id === selected);
+    if (!o || seq || !anchors.length || !hasMapsKey) return null; // not while Compare steps through every home
+    const modes = MODES.filter((m) => anchors.some((a) => !legs.has(legKey(o.id, a.id, m)) && !times.has(legKey(o.id, a.id, m))));
+    return modes.length ? { o, modes } : null;
+  }, [selected, seq, options, anchors, legs, times]);
   const timesInflight = useRef(false);
-  const [timesLoading, setTimesLoading] = useState(false);
   useEffect(() => {
-    if (!timesMissing || timesInflight.current || !options.length || !anchors.length) return;
+    if (!timesWanted || timesInflight.current) return;
     timesInflight.current = true;
-    setTimesLoading(true);
     postJson<{ times: Time[] }>("/api/times", {
       timeZone: timeZone(),
-      options: options.map((o) => ({ id: o.id, location: o.location })),
+      options: [{ id: timesWanted.o.id, location: timesWanted.o.location }],
       anchors: anchors.map((a) => ({ id: a.id, location: a.location })),
+      modes: timesWanted.modes,
     })
       .then((j) => {
         setTimes((prev) => {
@@ -132,15 +141,35 @@ export default function SettleApp() {
       .catch((e: Error) => setError(e.message))
       .finally(() => {
         timesInflight.current = false;
-        setTimesLoading(false);
       });
-  }, [timesMissing, options, anchors]);
+  }, [timesWanted, anchors]);
 
-  const cmp = useMemo(() => compare(options, anchors, legs, times, overrides), [options, anchors, legs, times, overrides]);
-
-  // Exactly one home is always selected: the one you picked, the one the sequence is on, or the best.
-  // Nothing is selected until you pick a home (or Compare finishes on the best one).
-  const selected = seq ? seq.order[seq.i] : selectedState && options.some((o) => o.id === selectedState) ? selectedState : null;
+  /* ---------- "5–9 min at peak" for the selected home's drives only (two requests each) ---------- */
+  const peakAsked = useRef(new Set<string>());
+  useEffect(() => {
+    const o = options.find((x) => x.id === selected);
+    if (!o || seq || !hasMapsKey) return;
+    const want = anchors
+      .map((a) => ({ a, leg: legs.get(legKey(o.id, a.id, "drive")) }))
+      .filter(({ a, leg }) => leg?.status === "ok" && !leg.peak && !peakAsked.current.has(legKey(o.id, a.id, "drive")));
+    if (!want.length) return;
+    for (const { a } of want) peakAsked.current.add(legKey(o.id, a.id, "drive"));
+    postJson<{ peaks: { optionId: string; anchorId: string; peak: [number, number] | null }[] }>("/api/peak", {
+      timeZone: timeZone(),
+      pairs: want.map(({ a }) => ({ optionId: o.id, anchorId: a.id, origin: o.location, destination: a.location })),
+    })
+      .then((j) => {
+        setLegs((prev) => {
+          const next = new Map(prev);
+          for (const p of j.peaks) {
+            const k = legKey(p.optionId, p.anchorId, "drive"), l = next.get(k);
+            if (l && p.peak) next.set(k, { ...l, peak: p.peak });
+          }
+          return next;
+        });
+      })
+      .catch(() => {}); // optional detail: the card just says "Drive"
+  }, [selected, seq, options, anchors, legs]);
 
   /* ---------- route lines, only for the mode chosen per pair: the selected home, or every home for Compare ---------- */
   // Every home's routes are shown (grey for homes that aren't selected), so fetch them all; results are cached.
@@ -460,7 +489,7 @@ export default function SettleApp() {
               {r.legs.map((l, ai) => (
                 <span key={l.anchor.id} className={`chip${typeof l.minutes === "number" && cmp.fastest[ai] === l.minutes ? " best" : ""}`} title={`${MODE_LABEL[l.mode]}${typeof l.minutes === "number" && cmp.fastest[ai] === l.minutes ? " · fastest of your homes" : ""}`} style={swatchStyle(l.anchor)}>
                   <span className="cn">{l.anchor.name}</span>
-                  {l.minutes === undefined ? (timesLoading ? "…" : "–") : l.minutes === null ? "–" : `${l.minutes} min`}
+                  {l.minutes === undefined ? (legErrors[pairKey(o.id, l.anchor.id)] || !hasMaps ? "–" : "…") : l.minutes === null ? "–" : `${l.minutes} min`}
                 </span>
               ))}
             </span>
