@@ -21,20 +21,18 @@ const MAP_ID = process.env.NEXT_PUBLIC_GOOGLE_MAP_ID;
  * the side chooser uses these to keep cards apart.
  */
 export const GEO = {
-  hub: { sel: 56, unsel: 36 },
-  tuck: 7, // cards tuck this far under their hub
-  sel: { w: 256, hPhoto: 230, hNoPhoto: 132 },
-  unsel: { w: 176, h: 76 },
-  anchor: { w: 228, h: 92, hFare: 108, marker: 24 },
+  hub: { sel: 46, unsel: 28 },
+  tuck: 6, // cards tuck this far under their hub
+  sel: { w: 216, hPhoto: 154, hNoPhoto: 76 },
+  unsel: { h: 26 }, // width follows the text: see tabWidth
+  anchor: { w: 228, h: 92, hFare: 108, hTab: 30, marker: 24 },
 };
 
-const vehicleIcon = (v?: string): IconName => (v && /RAIL|TRAIN|SUBWAY|TRAM|METRO/.test(v) ? "train" : v === "FERRY" ? "ferry" : "transit");
+/** Width of an unselected home's "Name · $price" tab (12px Inter, measured). */
+export const tabWidth = (o: Option) => Math.round(26 + 6.4 * (o.title.length + (o.price ? String(o.price.amount).length + 4 : 0)));
+const tabText = (o: Option) => (o.price ? `${o.title} · ${formatPrice(o.price).replace(/\/(wk|mo)$/, "")}` : o.title);
 
-function hm(min: number): string {
-  if (min < 60) return `${min} m`;
-  const h = Math.floor(min / 60), m = min % 60;
-  return m ? `${h} h ${m} m` : `${h} h`;
-}
+const vehicleIcon = (v?: string): IconName => (v && /RAIL|TRAIN|SUBWAY|TRAM|METRO/.test(v) ? "train" : v === "FERRY" ? "ferry" : "transit");
 
 type Props = {
   anchors: Anchor[];
@@ -104,7 +102,6 @@ function useSettledZoom(): number | null {
 type HomeCardProps = {
   o: Option;
   letter: string;
-  row?: OptionSummary;
   selected: boolean;
   side: Side;
   growKey: string;
@@ -112,44 +109,45 @@ type HomeCardProps = {
   onDetail: (id: string) => void;
 };
 
-/** Hub at the listing's exact location, with its card docked beside it. No connector line. */
-const HomeMarker = memo(function HomeMarker({ o, letter, row, selected, side, growKey, onSelect, onDetail }: HomeCardProps) {
-  const sub = [letter, o.subtitle?.split(",")[0], o.bedrooms ? `${o.bedrooms} bed` : null].filter(Boolean).join(" · ");
-  const travel = row?.dailyMinutes != null ? `${hm(row.dailyMinutes)}/day travel` : "Working out travel…";
+/**
+ * Hub at the listing's exact location with its label docked beside it (no connector line).
+ * Unselected: a small greyed "Name · $price" tab. Selected: a compact dark card.
+ */
+const HomeMarker = memo(function HomeMarker({ o, letter, selected, side, growKey, onSelect, onDetail }: HomeCardProps) {
   const price = o.price ? formatPrice(o.price).replace(/\/(wk|mo)$/, "") : null;
   const per = o.price?.period === "month" ? "/mo" : o.price?.period === "week" ? "/wk" : "";
+  const sub = [letter, o.subtitle?.split(",")[0], o.bedrooms ? `${o.bedrooms} bed` : null].filter(Boolean).join(" · ");
   return (
     <div className={`pm side-${side}${selected ? " sel" : ""}`}>
-      <div key={`${side}${selected ? growKey : ""}`} className={`pcard${selected ? " sel" : ""}${selected && o.photo ? " photo" : ""}`} onClick={() => onSelect(o.id)} role="button" tabIndex={0} aria-label={`${letter}: ${o.title}${selected ? ", selected" : ""}`} onKeyDown={(e) => e.key === "Enter" && onSelect(o.id)}>
-        {selected && o.photo && (
-          <div className="pc-photo">
-            {/* Small external TradeMe photo; next/image would need remote-host config for little gain. */}
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={o.photo} alt="" />
-            <span className="chip-sel">Selected</span>
-          </div>
-        )}
-        <div className="pc-body">
-          {selected && !o.photo && <span className="chip-sel inline">Selected</span>}
-          <div className="pc-row">
-            <b className="pc-name">{o.title}</b>
-            {price && <b className="pc-price">{price}{selected && <small>{per}</small>}</b>}
-          </div>
-          <div className="pc-sub">{sub}</div>
-          <div className="pc-row last">
-            <span className="pc-travel">{travel}</span>
-            {selected ? (
+      {selected ? (
+        <div key={`${side}${growKey}`} className="pcard sel" role="group" aria-label={`${letter}: ${o.title}, selected`}>
+          {o.photo && (
+            <div className="pc-photo">
+              {/* Small external TradeMe photo; next/image would need remote-host config for little gain. */}
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={o.photo} alt="" />
+            </div>
+          )}
+          <div className="pc-body">
+            <div className="pc-row">
+              <b className="pc-name">{o.title}</b>
+              {price && <b className="pc-price">{price}<small>{per}</small></b>}
+            </div>
+            <div className="pc-row">
+              <span className="pc-sub">{sub}</span>
               <button className="pc-more" aria-label={`Details for ${o.title}`} onClick={(e) => { e.stopPropagation(); onDetail(o.id); }}>
-                <Icon name="arrow" size={14} />
+                <Icon name="arrow" size={12} />
               </button>
-            ) : (
-              <Icon name="chev" size={14} className="pc-chev" />
-            )}
+            </div>
           </div>
         </div>
-      </div>
+      ) : (
+        <button key={side} className="ptab" onClick={() => onSelect(o.id)} aria-label={`Select ${letter}: ${o.title}`}>
+          {tabText(o)}
+        </button>
+      )}
       <button className={`hub${selected ? " sel" : ""}`} onClick={() => onSelect(o.id)} aria-label={`Select ${o.title}`}>
-        <Icon name="house2" size={selected ? 32 : 20} />
+        <Icon name="house2" size={selected ? 26 : 16} />
       </button>
     </div>
   );
@@ -172,9 +170,9 @@ const PlaceMarker = memo(function PlaceMarker({ a, sw, side, view, badge, countK
   const style = { "--tab": sw.tab, "--text": sw.text, "--route": sw.route, "--marker": sw.marker } as React.CSSProperties;
   return (
     <div className={`am side-${side}`} style={style}>
-      <div key={side} className={`acard${fare ? " fare" : ""}`} onClick={() => onClick(a.id)} role="button" tabIndex={0} aria-label={`Edit ${a.name}`} onKeyDown={(e) => e.key === "Enter" && onClick(a.id)}>
+      <div key={side} className={`acard${fare ? " fare" : ""}${view ? "" : " bare"}`} onClick={() => onClick(a.id)} role="button" tabIndex={0} aria-label={`Edit ${a.name}`} onKeyDown={(e) => e.key === "Enter" && onClick(a.id)}>
         <div className="atab"><b>{a.name}</b>{suburbOf(a) && <span>{suburbOf(a)}</span>}</div>
-        <div className="abody">
+        {view && <div className="abody">
           <div className="arow">
             <span className="atime">
               {typeof view?.minutes === "number" ? <CountUp key={countKey} value={view.minutes} ms={DRAW_MS} instant={instant} /> : view?.minutes === null ? "–" : "…"}
@@ -184,7 +182,7 @@ const PlaceMarker = memo(function PlaceMarker({ a, sw, side, view, badge, countK
           </div>
           <div className="amode"><Icon name={view?.mode ?? a.mode} size={14} />{modeDetail({ mode: view?.mode ?? a.mode, leg: view?.leg })}</div>
           {fare && <div className="afare">{fare}</div>}
-        </div>
+        </div>}
       </div>
       <span className="amark"><Icon name="anchor" size={13} /></span>
     </div>
@@ -221,7 +219,7 @@ export default function MapView(p: Props) {
             parts: pieces.map((x) => ({ m: measure(x.path), dashed: x.dashed })),
             selected: isSel,
             rides,
-            pts: isSel ? pieces.flatMap((x) => x.path.filter((_, i) => i % 3 === 0)) : [],
+            pts: isSel ? pieces.flatMap((x) => x.path.filter((_, i) => i % 2 === 0)) : [],
           }];
         }),
       ),
@@ -248,14 +246,15 @@ export default function MapView(p: Props) {
     for (const o of options) {
       const at = px(o.location), isSel = o.id === selected;
       const hub = isSel ? GEO.hub.sel : GEO.hub.unsel;
-      const w = isSel ? GEO.sel.w : GEO.unsel.w, h = isSel ? (o.photo ? GEO.sel.hPhoto : GEO.sel.hNoPhoto) : GEO.unsel.h;
+      const w = isSel ? GEO.sel.w : tabWidth(o), h = isSel ? (o.photo ? GEO.sel.hPhoto : GEO.sel.hNoPhoto) : GEO.unsel.h;
       const reach = hub / 2 - GEO.tuck;
       items.push({ id: `o:${o.id}`, at, priority: isSel ? 0 : 2, prefer: ["right", "left", "below", "above"], boxes: Object.fromEntries(SIDES.map((s) => [s, dockedBox(at, w, h, s, reach)])) as SideItem["boxes"] });
       markers.push({ id: `o:${o.id}`, at, r: hub / 2 + 4 });
     }
     for (const a of anchors) {
       const at = px(a.location);
-      items.push({ id: `a:${a.id}`, at, priority: 1, prefer: awayFrom(at, selAt), boxes: Object.fromEntries(SIDES.map((s) => [s, dockedBox(at, GEO.anchor.w, GEO.anchor.hFare, s, 0)])) as SideItem["boxes"] });
+      const ah = sel ? GEO.anchor.hFare : GEO.anchor.hTab, aw = sel ? GEO.anchor.w : Math.min(GEO.anchor.w, 40 + 7.5 * (a.name.length + (suburbOf(a)?.length ?? 0)));
+      items.push({ id: `a:${a.id}`, at, priority: 1, prefer: awayFrom(at, selAt), boxes: Object.fromEntries(SIDES.map((s) => [s, dockedBox(at, aw, ah, s, 0)])) as SideItem["boxes"] });
       markers.push({ id: `a:${a.id}`, at, r: GEO.anchor.marker / 2 + 4 });
     }
     const routePts = routes.filter((r) => r.selected).flatMap((r) => r.pts.map(px));
@@ -330,7 +329,6 @@ export default function MapView(p: Props) {
           <HomeMarker
             o={o}
             letter={letterOf(i)}
-            row={summary.get(o.id)}
             selected={o.id === selected}
             side={sides[`o:${o.id}`] ?? "right"}
             growKey={growKey}
