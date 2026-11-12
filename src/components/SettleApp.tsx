@@ -10,7 +10,9 @@ import type { Anchor, LatLng, Leg, Mode, Option, Time } from "@/core/types";
 import type { AlongResult } from "@/server/places";
 import { Icon, MODE_LABEL } from "./icons";
 import { Wordmark } from "./Logo";
-import { PlaceSearch, type PickedPlace } from "./PlaceSearch";
+import { homeFacts, listingUrl } from "@/core/home";
+import { HomeForm, type HomeDraft } from "./HomeForm";
+import { PlaceSearch } from "./PlaceSearch";
 import { DRAW_MS, STEP_DRAW, STEP_GAP } from "./RouteLayer";
 
 const MapView = dynamic(() => import("./MapView"), { ssr: false });
@@ -89,6 +91,8 @@ export default function SettleApp() {
     try { localStorage.setItem(STEP_KEY, stepped ? "on" : "off"); } catch {}
   }, [stepped]);
   const [edit, setEdit] = useState<string | null>(null);
+  /** The property form: "new", a home's id while editing it, or "closed" once dismissed. */
+  const [homeForm, setHomeForm] = useState<string | null>(null);
   const [adding, setAdding] = useState(false);
   // The new place being set up: name and icon first, then the address.
   const [draft, setDraft] = useState<{ name: string; mode: Mode }>({ name: "", mode: "drive" });
@@ -307,12 +311,41 @@ export default function SettleApp() {
     update((p) => ({ ...p, options: p.options.filter((x) => x.id !== id), overrides: Object.fromEntries(Object.entries(p.overrides ?? {}).filter(([k]) => !k.startsWith(`${id}|`))) }));
     if (selectedState === id) setSelectedState(null);
   };
-  const addOptionFromPlace = (pl: PickedPlace) => addOption({ id: newId(), title: pl.title, subtitle: pl.subtitle, location: pl.location, source: { kind: "manual" } });
-  const addOptionFromLink = async (url: string) => {
+  const fetchListing = async (url: string): Promise<Option> => {
     const r = await fetch(`/api/listing?url=${encodeURIComponent(url)}`);
     const j = await r.json().catch(() => ({}));
-    if (!r.ok) throw new Error(j.error ?? "Couldn't add that listing.");
-    addOption(j.option as Option);
+    if (!r.ok) throw new Error(j.error ?? "Couldn't get that listing. Type the address instead.");
+    return j.option as Option;
+  };
+  /** Save the property form: a new home, or changes to one (a new address clears its old routes). */
+  const saveHome = (id: string | null, d: HomeDraft) => {
+    if (!id) {
+      addOption({ id: newId(), ...d });
+      setHomeForm("closed");
+      return;
+    }
+    const before = options.find((o) => o.id === id);
+    const moved = before && (before.location.lat !== d.location.lat || before.location.lng !== d.location.lng);
+    update((p) => ({ ...p, options: p.options.map((o) => (o.id === id ? { ...d, id } : o)) }));
+    if (moved) {
+      const keep = <T,>(m: Map<string, T>) => new Map([...m].filter(([k]) => !k.startsWith(`${id}|`)));
+      setLegs(keep);
+      setTimes(keep);
+      peakAsked.current = new Set([...peakAsked.current].filter((k) => !k.startsWith(`${id}|`)));
+      setFitKey(newId());
+    }
+    setHomeForm("closed");
+  };
+  /** Photos live in browser storage; if they won't fit, say so rather than lose them on reload. */
+  const setPhotos = (id: string, photos: string[]) => {
+    const next = { ...plan, example: false, options: plan.options.map((o) => (o.id === id ? { ...o, photos: photos.length ? photos : undefined } : o)) };
+    try {
+      localStorage.setItem(PLAN_KEY, JSON.stringify(next));
+    } catch {
+      return setError("There's no room left on this device for more photos. Remove a few and try again.");
+    }
+    setError(null);
+    setPlan(next);
   };
   const startCompare = () => {
     const order = [...cmp.rows].reverse().map((r) => r.option.id); // most travel first, best last
@@ -481,9 +514,23 @@ export default function SettleApp() {
     );
   };
 
+  const newHomeOpen = homeForm === "new" || (homeForm === null && !options.length);
   const card = (r: OptionSummary) => {
     const o = r.option, isSel = selected === o.id, open = isSel && !collapsed;
-    const listing = o.source.kind === "trademe" ? o.source.url : o.source.kind === "feed" ? o.source.url : undefined;
+    const listing = listingUrl(o);
+    if (homeForm === o.id) {
+      return (
+        <div key={o.id} id={`card-${o.id}`} className="card sel open">
+          <div className="ch ch-static">
+            <span className="ch-top">
+              <span className="letter">{letter(o.id)}</span>
+              <span className="t"><b>Edit property</b></span>
+            </span>
+          </div>
+          <HomeForm initial={o} fetchListing={fetchListing} onSave={(d) => saveHome(o.id, d)} onCancel={() => setHomeForm("closed")} onRemove={() => { removeOption(o.id); setHomeForm("closed"); }} />
+        </div>
+      );
+    }
     return (
       <div key={o.id} id={`card-${o.id}`} className={`card${isSel ? " sel" : ""}${open ? " open" : ""}`}>
         <button className="ch" aria-expanded={open} onClick={() => selectHome(o.id, true)}>
@@ -491,7 +538,7 @@ export default function SettleApp() {
             <span className="letter">{letter(o.id)}</span>
             <span className="t">
               <b>{o.title}</b>
-              <span>{[o.subtitle, o.price ? formatPrice(o.price) : null, o.bedrooms ? `${o.bedrooms} bed` : null].filter(Boolean).join(" · ")}</span>
+              <span>{[o.subtitle, homeFacts(o, o.price ? formatPrice(o.price) : null)].filter(Boolean).join(" · ")}</span>
             </span>
             <Icon name="chev" size={14} className="chev" />
           </span>
@@ -529,7 +576,7 @@ export default function SettleApp() {
               {listing ? (
                 <a className="btn dark" href={listing} target="_blank" rel="noopener noreferrer">View listing</a>
               ) : null}
-              <button className="btn" onClick={() => removeOption(o.id)}>Remove</button>
+              <button className="btn" onClick={() => setHomeForm(o.id)}>Edit details</button>
             </div>
           </div>
         )}
@@ -637,21 +684,27 @@ export default function SettleApp() {
             </>
           ) : (
             <>
-            {hasMaps && options.length < MAX_OPTIONS && (
-              <div className="addhome">
-                <PlaceSearch id="add-home" placeholder="Paste a TradeMe link or type an address" onPick={addOptionFromPlace} onLink={addOptionFromLink} />
-              </div>
-            )}
-            <div className="subhead">
-              <span>One-way travel times · weekday 8am</span>
-            </div>
+            <div className="sec">Your properties · one-way, weekday 8am</div>
             {running && (
               <div className="status">
                 <span>{seq ? `Comparing · ${seq.i + 1} of ${seq.order.length} · best last` : "Getting routes…"}</span>
               </div>
             )}
             {error && <p className="err" style={{ margin: "0 2px 10px" }}>{error}</p>}
-            {options.length ? options.map((o) => cmp.rows.find((r) => r.option.id === o.id)!).map(card) : <div className="empty"><b>Step 2 of 2 · Add the homes you’re considering</b><br />Paste a TradeMe link or type an address above. Settle works out the trip from each one to your anchors.</div>}
+            {options.map((o) => cmp.rows.find((r) => r.option.id === o.id)!).map(card)}
+            {hasMaps && options.length < MAX_OPTIONS && (
+              newHomeOpen ? (
+                <div className="newhome">
+                  {!options.length && <p className="nh-step"><b>Step 2 of 2 · Add your properties here</b> Give it a name, then the address or a TradeMe link. Settle works out the trip from it to each of your anchors.</p>}
+                  <HomeForm fetchListing={fetchListing} onSave={(d) => saveHome(null, d)} onCancel={() => setHomeForm("closed")} />
+                </div>
+              ) : (
+                <button className="prow add addprop" onClick={() => { setHomeForm("new"); setAdding(false); setEdit(null); }}>
+                  <span className="badge lg"><Icon name="plus" size={15} /></span>
+                  <span className="t"><b>Add a property</b>{!options.length && <span>Name it, then the address or a listing link</span>}</span>
+                </button>
+              )
+            )}
             {!hasMaps && <p className="hint">Adding homes and places needs the Google Maps key (see README).</p>}
               <div className="hr" />
               {places}
@@ -673,6 +726,7 @@ export default function SettleApp() {
               instant={reduceMotion}
               stepped={stepped}
               onDetail={showDetail}
+              onPhotos={setPhotos}
               stops={along && along.optionId === selected ? along.results : []}
               hoverStop={hoverStop}
               onStopHover={setHoverStop}

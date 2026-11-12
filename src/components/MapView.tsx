@@ -1,14 +1,16 @@
 "use client";
 
 import { Map as GoogleMap, useMap } from "@vis.gl/react-google-maps";
-import { memo, useEffect, useMemo, useState } from "react";
+import { memo, useEffect, useMemo, useRef, useState } from "react";
 import { effectiveMode, formatPrice, legKey, type OptionSummary, type Overrides } from "@/core/compare";
 import { fareLine, modeDetail, rankBadge, suburbOf } from "@/core/describe";
 import { awayFrom, chooseSides, dockedBox, SIDES, type Pt, type Side, type SideItem } from "@/core/layout";
 import { anchorColor, letterOf, type Swatch } from "@/core/plan";
+import { listingUrl, MAX_PHOTOS, photosOf } from "@/core/home";
 import { decodePolyline, measure, midpoint } from "@/core/polyline";
 import type { Anchor, LatLng, Leg, Mode, Option } from "@/core/types";
 import { CountUp } from "./CountUp";
+import { imageFiles, shrinkImage } from "./photos";
 import { HtmlMarker } from "./HtmlMarker";
 import { Icon, type IconName } from "./icons";
 import { MAP_STYLE } from "./mapStyle";
@@ -23,7 +25,7 @@ const MAP_ID = process.env.NEXT_PUBLIC_GOOGLE_MAP_ID;
 export const GEO = {
   hub: { sel: 46, unsel: 28 },
   tuck: 6, // cards tuck this far under their hub
-  sel: { w: 216, hPhoto: 154, hNoPhoto: 76 },
+  sel: { w: 216, hPhoto: 154 },
   unsel: { h: 26 }, // width follows the text: see tabWidth
   anchor: { w: 228, h: 92, hFare: 108, hTab: 30, marker: 24 },
 };
@@ -50,6 +52,7 @@ type Props = {
   dropMode: boolean;
   onSelect: (id: string) => void;
   onDetail: (id: string) => void;
+  onPhotos: (id: string, photos: string[]) => void;
   onAnchorClick: (id: string) => void;
   onMapClick: (p: LatLng) => void;
   /** "Along the way" suggestions to pin on the map, numbered as in the panel. */
@@ -113,27 +116,23 @@ type HomeCardProps = {
   growKey: string;
   onSelect: (id: string) => void;
   onDetail: (id: string) => void;
+  onPhotos: (id: string, photos: string[]) => void;
 };
 
 /**
  * Hub at the listing's exact location with its label docked beside it (no connector line).
  * Unselected: a small greyed "Name · $price" tab. Selected: a compact dark card.
  */
-const HomeMarker = memo(function HomeMarker({ o, letter, selected, side, growKey, onSelect, onDetail }: HomeCardProps) {
+const HomeMarker = memo(function HomeMarker({ o, letter, selected, side, growKey, onSelect, onDetail, onPhotos }: HomeCardProps) {
   const price = o.price ? formatPrice(o.price).replace(/\/(wk|mo)$/, "") : null;
   const per = o.price?.period === "month" ? "/mo" : o.price?.period === "week" ? "/wk" : "";
-  const sub = [letter, o.subtitle?.split(",")[0], o.bedrooms ? `${o.bedrooms} bed` : null].filter(Boolean).join(" · ");
+  const sub = [letter, o.subtitle?.split(",")[0], o.bedrooms ? `${o.bedrooms} bed` : null, o.bathrooms ? `${o.bathrooms} bath` : null].filter(Boolean).join(" · ");
+  const pics = photosOf(o), link = listingUrl(o);
   return (
     <div className={`pm side-${side}${selected ? " sel" : ""}`}>
       {selected ? (
         <div key={`${side}${growKey}`} className="pcard sel" role="group" aria-label={`${letter}: ${o.title}, selected`}>
-          {o.photo && (
-            <div className="pc-photo">
-              {/* Small external TradeMe photo; next/image would need remote-host config for little gain. */}
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={o.photo} alt="" />
-            </div>
-          )}
+          <CardPhotos key={o.id} pics={pics} own={o.photos ?? []} onChange={(p) => onPhotos(o.id, p)} />
           <div className="pc-body">
             <div className="pc-row">
               <b className="pc-name">{o.title}</b>
@@ -141,9 +140,16 @@ const HomeMarker = memo(function HomeMarker({ o, letter, selected, side, growKey
             </div>
             <div className="pc-row">
               <span className="pc-sub">{sub}</span>
-              <button className="pc-more" aria-label={`Details for ${o.title}`} onClick={(e) => { e.stopPropagation(); onDetail(o.id); }}>
-                <Icon name="arrow" size={12} />
-              </button>
+              <span className="pc-acts">
+                {link && (
+                  <a className="pc-more" href={link} target="_blank" rel="noopener noreferrer" aria-label={`Open the listing for ${o.title}`} title="Open listing" onClick={(e) => e.stopPropagation()}>
+                    <Icon name="external" size={12} />
+                  </a>
+                )}
+                <button className="pc-more" aria-label={`Details for ${o.title}`} title="Details" onClick={(e) => { e.stopPropagation(); onDetail(o.id); }}>
+                  <Icon name="arrow" size={12} />
+                </button>
+              </span>
             </div>
           </div>
         </div>
@@ -158,6 +164,58 @@ const HomeMarker = memo(function HomeMarker({ o, letter, selected, side, growKey
     </div>
   );
 });
+
+/** Top of the selected card: your photos (tap to flick through) with a "+", or a spot to paste, drop or choose some. */
+function CardPhotos({ pics, own, onChange }: { pics: string[]; own: string[]; onChange: (p: string[]) => void }) {
+  const [i, setI] = useState(0);
+  const [over, setOver] = useState(false);
+  const [msg, setMsg] = useState<string | null>(null);
+  const input = useRef<HTMLInputElement>(null);
+  const add = async (files: File[]) => {
+    const room = MAX_PHOTOS - own.length;
+    if (!files.length) return;
+    if (room <= 0) return setMsg(`Up to ${MAX_PHOTOS} photos`);
+    try {
+      const shrunk = await Promise.all(files.slice(0, room).map((f) => shrinkImage(f)));
+      onChange([...own, ...shrunk]);
+      setI(own.length);
+      setMsg(null);
+    } catch {
+      setMsg("Couldn't read that image");
+    }
+  };
+  const shown = pics.length ? pics[Math.min(i, pics.length - 1)] : null;
+  return (
+    <div
+      className={`pc-photo${shown ? "" : " empty"}${over ? " over" : ""}`}
+      tabIndex={-1}
+      onPaste={(e) => { const f = imageFiles(e.clipboardData?.items); if (f.length) { e.preventDefault(); void add(f); } }}
+      onDragOver={(e) => { e.preventDefault(); setOver(true); }}
+      onDragLeave={() => setOver(false)}
+      onDrop={(e) => { e.preventDefault(); setOver(false); void add(imageFiles(e.dataTransfer?.files)); }}
+    >
+      {shown ? (
+        <>
+          <button className="pc-pic" onClick={(e) => { e.stopPropagation(); setI((i + 1) % pics.length); }} aria-label={pics.length > 1 ? "Next photo" : "Photo"}>
+            {/* Local or TradeMe photo; next/image would need remote-host config for little gain. */}
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={shown} alt="" />
+          </button>
+          {pics.length > 1 && <span className="pc-count">{Math.min(i, pics.length - 1) + 1}/{pics.length}</span>}
+          {own.length < MAX_PHOTOS && (
+            <button className="pc-add" onClick={(e) => { e.stopPropagation(); input.current?.click(); }} aria-label="Add photos" title="Add photos (or paste / drop)"><Icon name="plus" size={14} /></button>
+          )}
+        </>
+      ) : (
+        <button className="pc-drop" onClick={(e) => { e.stopPropagation(); input.current?.click(); }}>
+          <Icon name="plus" size={16} />
+          <span><b>Add photos</b>{msg ?? "Paste, drop or choose"}</span>
+        </button>
+      )}
+      <input ref={input} type="file" accept="image/*" multiple hidden onChange={(e) => { void add(Array.from(e.target.files ?? [])); e.target.value = ""; }} />
+    </div>
+  );
+}
 
 type PlaceProps = {
   a: Anchor;
@@ -260,7 +318,7 @@ export default function MapView(p: Props) {
     for (const o of options) {
       const at = px(o.location), isSel = o.id === selected;
       const hub = isSel ? GEO.hub.sel : GEO.hub.unsel;
-      const w = isSel ? GEO.sel.w : tabWidth(o), h = isSel ? (o.photo ? GEO.sel.hPhoto : GEO.sel.hNoPhoto) : GEO.unsel.h;
+      const w = isSel ? GEO.sel.w : tabWidth(o), h = isSel ? GEO.sel.hPhoto : GEO.unsel.h;
       const reach = hub / 2 - GEO.tuck;
       items.push({ id: `o:${o.id}`, at, priority: isSel ? 0 : 2, prefer: ["right", "left", "below", "above"], boxes: Object.fromEntries(SIDES.map((s) => [s, dockedBox(at, w, h, s, reach)])) as SideItem["boxes"] });
       markers.push({ id: `o:${o.id}`, at, r: hub / 2 + 4 });
@@ -359,6 +417,7 @@ export default function MapView(p: Props) {
             growKey={growKey}
             onSelect={p.onSelect}
             onDetail={p.onDetail}
+            onPhotos={p.onPhotos}
           />
         </HtmlMarker>
       ))}
