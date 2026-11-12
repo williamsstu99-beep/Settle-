@@ -158,3 +158,25 @@ describe("place card extras", () => {
     vi.unstubAllGlobals();
   });
 });
+
+import { parseAlong } from "./places";
+
+describe("along the way", () => {
+  it("works out detours from the two routing legs and sorts by least detour", () => {
+    const r = parseAlong({
+      places: [
+        { id: "a", displayName: { text: "Far Gym" }, location: { latitude: 1, longitude: 2 }, rating: 4.8, userRatingCount: 300 },
+        { id: "b", displayName: { text: "Handy Gym" }, location: { latitude: 1, longitude: 2 }, rating: 4.2 },
+        { id: "c", location: { latitude: 1, longitude: 2 } },
+        { displayName: { text: "No id" }, location: { latitude: 1, longitude: 2 } },
+      ],
+      routingSummaries: [
+        { legs: [{ duration: "600s" }, { duration: "900s" }] }, // 10 + 15 vs 20 direct → +5
+        { legs: [{ duration: "480s" }, { duration: "720s" }] }, // 8 + 12 = 20 → on the way
+        {},
+        {},
+      ],
+    }, 20);
+    expect(r.map((x) => [x.name, x.fromHome, x.detour])).toEqual([["Handy Gym", 8, 0], ["Far Gym", 10, 5], ["Unnamed place", undefined, undefined]]);
+  });
+});

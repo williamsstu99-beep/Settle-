@@ -4,11 +4,12 @@ import { APIProvider } from "@vis.gl/react-google-maps";
 import dynamic from "next/dynamic";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { compare, effectiveMode, formatPrice, legKey, pairKey, type LegView, type OptionSummary } from "@/core/compare";
-import { anchorColor, decodePlan, encodePlan, EXAMPLE_PLAN, letterOf, MAX_ANCHORS, MAX_OPTIONS, newId, nextAnchorColor, type Plan } from "@/core/plan";
+import { anchorColor, decodePlan, encodePlan, EXAMPLE_PLAN, letterOf, migratePlan, MAX_ANCHORS, MAX_OPTIONS, newId, nextAnchorColor, type Plan } from "@/core/plan";
 import type { Anchor, LatLng, Leg, Mode, Option, Time } from "@/core/types";
+import type { AlongResult } from "@/server/places";
 import { Icon, MODE_LABEL } from "./icons";
 import { PlaceSearch, type PickedPlace } from "./PlaceSearch";
-import { DRAW_MS } from "./RouteLayer";
+import { DRAW_MS, STEP_DRAW, STEP_GAP } from "./RouteLayer";
 
 const MapView = dynamic(() => import("./MapView"), { ssr: false });
 
@@ -20,7 +21,9 @@ const MODES: Mode[] = ["transit", "drive", "bike", "walk"];
 
 const timeZone = () => Intl.DateTimeFormat().resolvedOptions().timeZone;
 const hasMapsKey = !!API_KEY;
-const STEP_MS = 300 + DRAW_MS + 500; // card grows, routes draw, short hold
+const STEP_KEY = "settle.step.v1";
+/** How long Compare stays on each home: card grows, its routes draw (all together, or one place at a time), short hold. */
+const stepMs = (stepped: boolean, places: number) => 300 + (stepped ? Math.max(0, places - 1) * STEP_GAP + STEP_DRAW : DRAW_MS) + 600;
 
 function loadPlan(): Plan {
   const m = location.hash.match(/^#s=([\w-]+)/);
@@ -30,7 +33,7 @@ function loadPlan(): Plan {
   }
   try {
     const raw = localStorage.getItem(PLAN_KEY);
-    if (raw) return JSON.parse(raw) as Plan;
+    if (raw) return migratePlan(JSON.parse(raw) as Plan);
   } catch {}
   return EXAMPLE_PLAN;
 }
@@ -67,12 +70,23 @@ export default function SettleApp() {
   const [hasRun, setHasRun] = useState(false);
   const [epoch, setEpoch] = useState(0); // new value = redraw every route (Compare / Replay)
   const [reduceMotion] = useState(() => matchMedia("(prefers-reduced-motion: reduce)").matches);
+  // Step-through reveal (one place's route at a time). On by default; your choice is remembered.
+  const [stepped, setStepped] = useState(() => {
+    try { return localStorage.getItem(STEP_KEY) !== "off"; } catch { return true; }
+  });
+  useEffect(() => {
+    try { localStorage.setItem(STEP_KEY, stepped ? "on" : "off"); } catch {}
+  }, [stepped]);
   const [edit, setEdit] = useState<string | null>(null);
   const [adding, setAdding] = useState(false);
   // The new place being set up: name and icon first, then the address.
-  const [draft, setDraft] = useState<{ name: string; mode: Mode }>({ name: "", mode: "transit" });
+  const [draft, setDraft] = useState<{ name: string; mode: Mode }>({ name: "", mode: "drive" });
   const [error, setError] = useState<string | null>(null);
   const [legErrors, setLegErrors] = useState<Record<string, string>>({});
+  // "Along the way": stops (any category) on a selected home's route to one of your places.
+  const [along, setAlong] = useState<{ optionId: string; anchorId: string; query: string; loading: boolean; results: AlongResult[]; error?: string } | null>(null);
+  const [alongText, setAlongText] = useState("");
+  const [hoverStop, setHoverStop] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const [fitKey, setFitKey] = useState("init");
 
@@ -203,9 +217,9 @@ export default function SettleApp() {
         setSelectedState(seq.order[seq.i]);
         setSeq(null);
       }
-    }, STEP_MS);
+    }, stepMs(stepped, anchors.length));
     return () => clearTimeout(t);
-  }, [seq]);
+  }, [seq, stepped, anchors.length]);
 
   /* ---------- actions ---------- */
   /** Create the place from the draft. Its name is what you typed (or the icon's label), never the address. */
@@ -215,7 +229,7 @@ export default function SettleApp() {
     const a: Anchor = { id: newId(), name: name.slice(0, 40), icon: "other", location, address, mode: draft.mode, color: nextAnchorColor(anchors) };
     update((p) => ({ ...p, anchors: [...p.anchors, a] }));
     setAdding(false);
-    setDraft({ name: "", mode: "transit" });
+    setDraft({ name: "", mode: "drive" });
     setFitKey(newId());
   };
   const patchAnchor = (id: string, patch: Partial<Anchor>) => update((p) => ({ ...p, anchors: p.anchors.map((a) => (a.id === id ? { ...a, ...patch } : a)) }));
@@ -225,6 +239,29 @@ export default function SettleApp() {
     setError(null);
     update((p) => ({ ...p, options: [...p.options, o] }));
     setFitKey(newId());
+  };
+  const searchAlong = async (o: Option, a: Anchor, query: string) => {
+    const leg = legs.get(legKey(o.id, a.id, effectiveMode(overrides, o.id, a)));
+    const q = query.trim();
+    if (q.length < 2) return;
+    if (leg?.status !== "ok" || !leg.polyline) {
+      setAlong({ optionId: o.id, anchorId: a.id, query: q, loading: false, results: [], error: "That route is still loading. Try again in a moment." });
+      return;
+    }
+    setAlong({ optionId: o.id, anchorId: a.id, query: q, loading: true, results: [] });
+    try {
+      const j = await postJson<{ results: AlongResult[] }>("/api/along", { query: q, polyline: leg.polyline, origin: o.location, mode: leg.mode, baseMinutes: leg.minutes ?? 0 });
+      setAlong((cur) => (cur && cur.query === q && cur.optionId === o.id && cur.anchorId === a.id ? { ...cur, loading: false, results: j.results } : cur));
+    } catch (e) {
+      setAlong((cur) => (cur && cur.query === q ? { ...cur, loading: false, error: (e as Error).message } : cur));
+    }
+  };
+  /** Turn a suggestion into one of your places, named after the place itself. */
+  const addStop = (r: AlongResult) => {
+    if (anchors.length >= MAX_ANCHORS) return setError(`You can have up to ${MAX_ANCHORS} places.`);
+    const a: Anchor = { id: newId(), name: r.name.slice(0, 40), icon: "other", location: r.location, address: r.address, mode: "drive", color: nextAnchorColor(anchors) };
+    update((p) => ({ ...p, anchors: [...p.anchors, a] }));
+    setAlong(null);
   };
   const removeOption = (id: string) => {
     update((p) => ({ ...p, options: p.options.filter((x) => x.id !== id), overrides: Object.fromEntries(Object.entries(p.overrides ?? {}).filter(([k]) => !k.startsWith(`${id}|`))) }));
@@ -362,6 +399,48 @@ export default function SettleApp() {
     );
   };
 
+  const CATEGORIES = ["Gym", "Café", "Supermarket", "School", "Childcare", "Pharmacy"];
+  const alongSection = (o: Option) => {
+    if (!anchors.length) return null;
+    const cur = along?.optionId === o.id ? along : null;
+    const to = anchors.find((a) => a.id === cur?.anchorId) ?? anchors[0];
+    return (
+      <div className="along">
+        <div className="along-h"><b>Along the way</b><span>stops on your trip to</span></div>
+        <div className="along-to" role="group" aria-label="Search along the trip to">
+          {anchors.map((a) => (
+            <button key={a.id} aria-pressed={a.id === to.id} style={swatchStyle(a)} onClick={() => (cur?.query ? searchAlong(o, a, cur.query) : setAlong({ optionId: o.id, anchorId: a.id, query: "", loading: false, results: [] }))}>{a.name}</button>
+          ))}
+        </div>
+        <div className="along-cats">
+          {CATEGORIES.map((c) => (
+            <button key={c} aria-pressed={cur?.query === c} onClick={() => searchAlong(o, to, c)}>{c}</button>
+          ))}
+          <form onSubmit={(e) => { e.preventDefault(); searchAlong(o, to, alongText); }}>
+            <input className="text sm" value={alongText} onChange={(e) => setAlongText(e.target.value)} placeholder="Something else…" aria-label="Search for something else along the way" maxLength={60} />
+          </form>
+        </div>
+        {cur?.loading && <p className="hint">Looking along your route…</p>}
+        {cur?.error && <p className="err">{cur.error}</p>}
+        {cur && !cur.loading && !cur.error && cur.query && !cur.results.length && <p className="hint">Nothing found for “{cur.query}” along this trip.</p>}
+        {!!cur?.results.length && (
+          <ol className="stops">
+            {cur.results.map((r, i) => (
+              <li key={r.id} className={hoverStop === r.id ? "hov" : ""} onMouseEnter={() => setHoverStop(r.id)} onMouseLeave={() => setHoverStop(null)}>
+                <span className="stop-n">{i + 1}</span>
+                <span className="stop-t">
+                  <b>{r.name}</b>
+                  <span>{[r.rating ? `★ ${r.rating.toFixed(1)}${r.ratings ? ` (${r.ratings})` : ""}` : null, r.detour == null ? null : r.detour <= 1 ? "On the way" : `+${r.detour} min`].filter(Boolean).join(" · ")}</span>
+                </span>
+                <button className="link" onClick={() => addStop(r)} disabled={anchors.length >= MAX_ANCHORS || anchors.some((a) => a.name === r.name.slice(0, 40))}>Add</button>
+              </li>
+            ))}
+          </ol>
+        )}
+      </div>
+    );
+  };
+
   const card = (r: OptionSummary) => {
     const o = r.option, isSel = selected === o.id, open = isSel && !collapsed;
     const listing = o.source.kind === "trademe" ? o.source.url : o.source.kind === "feed" ? o.source.url : undefined;
@@ -405,6 +484,7 @@ export default function SettleApp() {
                 </div>
               );
             })}
+            {alongSection(o)}
             <div className="cb-foot">
               {listing ? (
                 <a className="btn dark" href={listing} target="_blank" rel="noopener noreferrer">View listing</a>
@@ -498,7 +578,7 @@ export default function SettleApp() {
           {plan.example && (
             <div className="banner">
               <span><b>This is an example.</b> Add your own homes and places, or start fresh.</span>
-              <button onClick={() => { setPlan({ anchors: [], options: [] }); setEdit(null); setSelectedState(null); skip(); setHasRun(false); }}>Start fresh</button>
+              <button onClick={() => { setPlan({ anchors: [], options: [], driveDefault: true }); setEdit(null); setSelectedState(null); skip(); setHasRun(false); }}>Start fresh</button>
             </div>
           )}
           {hasMaps && options.length < MAX_OPTIONS && (
@@ -533,7 +613,11 @@ export default function SettleApp() {
               selected={selected}
               epoch={epoch}
               instant={reduceMotion}
+              stepped={stepped}
               onDetail={showDetail}
+              stops={along && along.optionId === selected ? along.results : []}
+              hoverStop={hoverStop}
+              onStopHover={setHoverStop}
               fitKey={fitKey}
               dropMode={adding}
               onSelect={(id) => selectHome(id)}
@@ -541,6 +625,11 @@ export default function SettleApp() {
               onMapClick={onMapClick}
             />
             {adding && <div className="droptip">Click the map to drop a pin · or search on the left</div>}
+            <label className="steptoggle" title="Draw a home's routes one place at a time">
+              <input type="checkbox" checked={stepped} onChange={(e) => setStepped(e.target.checked)} />
+              <span aria-hidden="true" />
+              Step through routes
+            </label>
             <button className="fitbtn" onClick={() => setFitKey(newId())} aria-label="Show every home, place and route">
               <Icon name="expand" size={15} />Show all
             </button>

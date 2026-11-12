@@ -1,6 +1,6 @@
 import { beforeAll, describe, expect, it } from "vitest";
 import { measure } from "@/core/polyline";
-import { DRAW_MS, FADE_MS, GREY, layoutParts, paint, syncLines, type DrawRoute, type Line } from "./RouteLayer";
+import { DRAW_MS, FADE_MS, GREY, layoutParts, paint, STEP_DRAW, STEP_GAP, syncLines, type DrawRoute, type Line } from "./RouteLayer";
 
 class FakePolyline {
   o: Record<string, unknown> = {};
@@ -9,7 +9,7 @@ class FakePolyline {
   setMap(m: unknown) { if (m === null) this.removed = true; }
 }
 beforeAll(() => {
-  (globalThis as unknown as { google: unknown }).google = { maps: { SymbolPath: { CIRCLE: 0 } } };
+  (globalThis as unknown as { google: unknown }).google = { maps: { SymbolPath: { CIRCLE: 0, FORWARD_OPEN_ARROW: 3 } } };
 });
 
 const path = [{ lat: 0, lng: 0 }, { lat: 0, lng: 1 }, { lat: 0, lng: 2 }];
@@ -41,14 +41,25 @@ describe("routes", () => {
     expect((layer("A|work", "core").path as unknown[]).length).toBeLessThan(path.length + 1);
     expect((layer("A|work", "core").icons as { offset: string }[]).some((i) => i.offset === "100%")).toBe(true);
   });
-  it("then sends light pulses along them, which keep moving", () => {
+  it("then marks them with still direction chevrons and stops animating", () => {
     const { lines, create, layer } = setup();
     syncLines(lines, all("A"), 0, create);
-    expect(paint(lines, DRAW_MS + 100)).toBe(true);
-    const a = (layer("A|work", "core").icons as { offset: string; repeat?: string }[]).find((i) => i.repeat === "124px")!.offset;
-    paint(lines, DRAW_MS + 900);
-    const b = (layer("A|work", "core").icons as { offset: string; repeat?: string }[]).find((i) => i.repeat === "124px")!.offset;
-    expect(a).not.toBe(b);
+    expect(paint(lines, DRAW_MS + 100)).toBe(false);
+    const icons = layer("A|work", "core").icons as { repeat?: string; icon: { path: unknown } }[];
+    expect(icons).toHaveLength(1);
+    expect(icons[0].repeat).toBe("72px");
+  });
+  it("steps through places: each route waits for its turn, then draws", () => {
+    const { lines, create, layer } = setup();
+    const stepped = all("A").map((r, i) => (r.selected ? { ...r, delay: i * STEP_GAP, drawMs: STEP_DRAW } : r));
+    syncLines(lines, stepped, 0, create);
+    paint(lines, STEP_DRAW / 2);
+    expect(layer("A|work", "core").visible).toBe(true);
+    expect(layer("A|gym", "core").visible).toBe(false); // not its turn yet
+    paint(lines, STEP_GAP + STEP_DRAW / 2);
+    expect(layer("A|work", "core").path).toEqual(path); // done
+    expect(layer("A|gym", "core").visible).toBe(true); // drawing now
+    expect(paint(lines, STEP_GAP + STEP_DRAW + 10)).toBe(false);
   });
   it("selecting another home fades the old colour back to grey and draws the new one", () => {
     const { lines, create, layer } = setup();
@@ -76,7 +87,7 @@ describe("routes", () => {
   it("with reduced motion: no drawing, pulses stand still, nothing keeps animating", () => {
     const { lines, create, layer } = setup();
     syncLines(lines, all("A"), 0, create, true);
-    expect(paint(lines, 0, true)).toBe(false);
+    expect(paint(lines, 0)).toBe(false);
     expect(layer("A|work", "core")).toMatchObject({ visible: true, path });
   });
 });

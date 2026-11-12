@@ -22,7 +22,7 @@ export function rankBadge(rows: OptionSummary[], anchorIndex: number, optionId: 
     const myFare = fares.find((f) => f.id === optionId)?.fare;
     if (myFare === cheapest && fares.filter((f) => f.fare === cheapest).length === 1) return { text: "Cheapest", strong: false };
   }
-  return { text: rank === 2 ? `2nd fastest of ${known.length}` : `${ordinal(rank)} of ${known.length}`, strong: false };
+  return { text: `${ordinal(rank)} of ${known.length}`, strong: false };
 }
 
 const VEHICLE: Record<string, string> = {

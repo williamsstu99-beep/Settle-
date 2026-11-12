@@ -13,13 +13,18 @@ export type DrawRoute = {
   color: string; // the place's route colour
   parts: RoutePart[];
   selected: boolean;
+  /** Step-through reveal: wait this long after selection before drawing (ms). */
+  delay?: number;
+  /** How long this route takes to draw (ms); defaults to DRAW_MS. */
+  drawMs?: number;
 };
 
 export const GREY = "#B5BBC3";
 export const DRAW_MS = 1200; // coloured routes draw out of the hub
 export const FADE_MS = 400; // colour fades back to grey when another home is selected
-export const PULSE_MS = 3200; // one pulse travels the repeat distance
-const PULSE_GAP = 124; // px between pulses (dasharray "4 120")
+/** Step-through reveal: one place's route at a time. */
+export const STEP_GAP = 650; // next route starts this long after the previous
+export const STEP_DRAW = 600; // each route draws in this long
 
 type Poly = Pick<google.maps.Polyline, "setOptions" | "setMap">;
 type Part = { grey: Poly; casing: Poly; core: Poly; m: Measured; dashed: boolean; start: number; end: number };
@@ -62,7 +67,7 @@ export function syncLines(lines: Map<string, Line>, routes: DrawRoute[], now: nu
       lines.set(r.key, {
         route: r,
         parts: layoutParts(r).map((p) => ({ ...p, grey: create(), casing: create(), core: create() })),
-        colourAt: r.selected && !instant ? now : null,
+        colourAt: r.selected && !instant ? now + (r.delay ?? 0) : null,
         greyAt: null,
         dying: null,
       });
@@ -70,7 +75,7 @@ export function syncLines(lines: Map<string, Line>, routes: DrawRoute[], now: nu
     }
     l.dying = null;
     if (r.selected && !l.route.selected) {
-      l.colourAt = instant ? null : now;
+      l.colourAt = instant ? null : now + (r.delay ?? 0);
       l.greyAt = null;
     } else if (!r.selected && l.route.selected) {
       l.greyAt = instant ? now - FADE_MS : now;
@@ -91,25 +96,24 @@ function retire(l: Line) {
 /**
  * Every home's routes on the Google map: thin grey for all homes, and the
  * selected home's routes in each place's colour on a white casing, drawn out
- * of its hub, with soft light pulses travelling from the hub to each place.
+ * of its hub (one place at a time when stepping), then marked with faint
+ * direction chevrons pointing from the home to each place.
  */
 export function RouteLayer({ routes, instant }: { routes: DrawRoute[]; instant: boolean }) {
   const map = useMap();
   const lines = useRef(new Map<string, Line>());
   const raf = useRef(0);
-  const still = useRef(instant);
 
   useEffect(() => {
-    still.current = instant;
     if (!map) return;
     const ls = lines.current;
     const create = () => new google.maps.Polyline({ map, clickable: false, geodesic: false, visible: false });
     syncLines(ls, routes, performance.now(), create, instant);
     cancelAnimationFrame(raf.current);
     const tick = (t: number) => {
-      raf.current = paint(ls, t, still.current) ? requestAnimationFrame(tick) : 0;
+      raf.current = paint(ls, t) ? requestAnimationFrame(tick) : 0;
     };
-    raf.current = paint(ls, performance.now(), instant) ? requestAnimationFrame(tick) : 0;
+    raf.current = paint(ls, performance.now()) ? requestAnimationFrame(tick) : 0;
   }, [map, routes, instant]);
 
   useEffect(() => {
@@ -133,16 +137,16 @@ const head = (color: string): google.maps.IconSequence => ({
   icon: { path: google.maps.SymbolPath.CIRCLE, scale: 5, fillColor: color, fillOpacity: 1, strokeColor: "#ffffff", strokeWeight: 2 },
   offset: "100%",
 });
-const pulses = (offsetPx: number): google.maps.IconSequence => ({
-  icon: { path: "M 0,-2 0,2", strokeColor: "#ffffff", strokeOpacity: 0.7, strokeWeight: 3, scale: 1 },
-  offset: `${offsetPx.toFixed(1)}px`,
-  repeat: `${PULSE_GAP}px`,
+/** Faint, still chevrons pointing along the route (home → place). */
+const chevrons = (): google.maps.IconSequence => ({
+  icon: { path: google.maps.SymbolPath.FORWARD_OPEN_ARROW, scale: 1.5, strokeColor: "#ffffff", strokeOpacity: 0.85, strokeWeight: 1.6 },
+  offset: "36px",
+  repeat: "72px",
 });
 
-/** Style every line for time `t`. Returns true while anything is moving (including pulses). */
-export function paint(lines: Map<string, Line>, t: number, instant = false): boolean {
+/** Style every line for time `t`. Returns true while anything is still moving. */
+export function paint(lines: Map<string, Line>, t: number): boolean {
   let moving = false;
-  const pulseOffset = instant ? 0 : ((t % PULSE_MS) / PULSE_MS) * PULSE_GAP;
 
   for (const [key, l] of lines) {
     const r = l.route;
@@ -162,7 +166,7 @@ export function paint(lines: Map<string, Line>, t: number, instant = false): boo
     let progress = 1;
     let drawing = false;
     if (r.selected && l.colourAt != null) {
-      const p = Math.min(1, Math.max(0, (t - l.colourAt) / DRAW_MS));
+      const p = Math.min(1, Math.max(0, (t - l.colourAt) / (r.drawMs ?? DRAW_MS)));
       progress = easeInOut(p);
       drawing = p < 1;
       if (p >= 1) l.colourAt = null;
@@ -174,7 +178,6 @@ export function paint(lines: Map<string, Line>, t: number, instant = false): boo
       else l.greyAt = null;
     }
     colour *= fade;
-    if (r.selected && !drawing && !instant && l.dying == null) moving = true; // pulses keep travelling
 
     const lastLive = l.parts.findLastIndex((p) => progress > p.start);
     l.parts.forEach((p, i) => {
@@ -184,7 +187,7 @@ export function paint(lines: Map<string, Line>, t: number, instant = false): boo
       const icons: google.maps.IconSequence[] = [];
       if (showColour && p.dashed) icons.push(dashes(r.color, colour, 5));
       if (showColour && drawing && i === lastLive) icons.push(head(r.color));
-      if (showColour && r.selected && !drawing && l.dying == null) icons.push(pulses(pulseOffset));
+      if (showColour && r.selected && !drawing && l.dying == null && !p.dashed) icons.push(chevrons());
 
       p.grey.setOptions({ visible: true, path: p.m.path, strokeColor: GREY, strokeOpacity: p.dashed ? 0 : 0.95 * fade, strokeWeight: 2, zIndex: 1, icons: p.dashed ? [dashes(GREY, 0.95 * fade, 2)] : [] });
       p.casing.setOptions({ visible: showColour, path, strokeColor: "#ffffff", strokeOpacity: colour, strokeWeight: 9, zIndex: 10 });
