@@ -6,7 +6,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { compare, effectiveMode, formatPrice, legKey, pairKey, type LegView, type OptionSummary } from "@/core/compare";
 import { anchorColor, decodePlan, encodePlan, EXAMPLE_PLAN, letterOf, MAX_ANCHORS, MAX_OPTIONS, newId, nextAnchorColor, type Plan } from "@/core/plan";
 import type { Anchor, LatLng, Leg, Mode, Option, Time } from "@/core/types";
-import { ANCHOR_ICONS, Icon, MODE_LABEL } from "./icons";
+import { Icon, MODE_LABEL } from "./icons";
 import { PlaceSearch, type PickedPlace } from "./PlaceSearch";
 import { DRAW_MS } from "./RouteLayer";
 
@@ -49,13 +49,6 @@ function saveMap<T>(key: string, m: Map<string, T>, max: number) {
   } catch {}
 }
 
-/** "1 h 32 m" / "48 m" for compact totals. */
-function hm(min: number): string {
-  if (min < 60) return `${min} m`;
-  const h = Math.floor(min / 60), m = min % 60;
-  return m ? `${h} h ${m} m` : `${h} h`;
-}
-
 async function postJson<T>(url: string, body: unknown): Promise<T> {
   const r = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
   const j = await r.json().catch(() => ({}));
@@ -77,7 +70,7 @@ export default function SettleApp() {
   const [edit, setEdit] = useState<string | null>(null);
   const [adding, setAdding] = useState(false);
   // The new place being set up: name and icon first, then the address.
-  const [draft, setDraft] = useState<{ name: string; icon: Anchor["icon"]; mode: Mode }>({ name: "", icon: "work", mode: "transit" });
+  const [draft, setDraft] = useState<{ name: string; mode: Mode }>({ name: "", mode: "transit" });
   const [error, setError] = useState<string | null>(null);
   const [legErrors, setLegErrors] = useState<Record<string, string>>({});
   const [copied, setCopied] = useState(false);
@@ -132,7 +125,8 @@ export default function SettleApp() {
   const cmp = useMemo(() => compare(options, anchors, legs, times, overrides), [options, anchors, legs, times, overrides]);
 
   // Exactly one home is always selected: the one you picked, the one the sequence is on, or the best.
-  const selected = seq ? seq.order[seq.i] : selectedState && options.some((o) => o.id === selectedState) ? selectedState : (cmp.rows[0]?.option.id ?? null);
+  // Nothing is selected until you pick a home (or Compare finishes on the best one).
+  const selected = seq ? seq.order[seq.i] : selectedState && options.some((o) => o.id === selectedState) ? selectedState : null;
 
   /* ---------- route lines, only for the mode chosen per pair: the selected home, or every home for Compare ---------- */
   // Every home's routes are shown (grey for homes that aren't selected), so fetch them all; results are cached.
@@ -217,11 +211,11 @@ export default function SettleApp() {
   /** Create the place from the draft. Its name is what you typed (or the icon's label), never the address. */
   const addAnchorAt = (location: LatLng, address?: string) => {
     if (anchors.length >= MAX_ANCHORS) return;
-    const name = draft.name.trim() || ANCHOR_ICONS.find((x) => x.id === draft.icon)?.label || "Place";
-    const a: Anchor = { id: newId(), name: name.slice(0, 40), icon: draft.icon, location, address, mode: draft.mode, color: nextAnchorColor(anchors) };
+    const name = draft.name.trim() || `Place ${anchors.length + 1}`;
+    const a: Anchor = { id: newId(), name: name.slice(0, 40), icon: "other", location, address, mode: draft.mode, color: nextAnchorColor(anchors) };
     update((p) => ({ ...p, anchors: [...p.anchors, a] }));
     setAdding(false);
-    setDraft({ name: "", icon: "work", mode: "transit" });
+    setDraft({ name: "", mode: "transit" });
     setFitKey(newId());
   };
   const patchAnchor = (id: string, patch: Partial<Anchor>) => update((p) => ({ ...p, anchors: p.anchors.map((a) => (a.id === id ? { ...a, ...patch } : a)) }));
@@ -303,8 +297,15 @@ export default function SettleApp() {
       prompt("Copy this link", url);
     }
   };
+  const deselect = () => {
+    setSeq(null);
+    setPending(null);
+    setSelectedState(null);
+  };
+  // Clicking empty map deselects (cards and markers stop their clicks reaching the map).
   const onMapClick = (p: LatLng) => {
     if (adding) addAnchorAt(p);
+    else deselect();
   };
   const onAnchorClick = (id: string) => setEdit((e) => (e === id ? null : id));
   /** The selected card's chevron: open its listing, or bring its panel card into view. */
@@ -319,6 +320,24 @@ export default function SettleApp() {
     requestAnimationFrame(() => document.getElementById(`card-${id}`)?.scrollIntoView({ behavior: "smooth", block: "nearest" }));
   };
   const running = !!(seq || pending);
+
+  // Escape backs out one step: cancel adding, close an editor, then deselect.
+  const escape = useRef(() => {});
+  useEffect(() => {
+    escape.current = () => {
+      if (adding) setAdding(false);
+      else if (edit) setEdit(null);
+      else deselect();
+    };
+  });
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Escape" || (e.target as HTMLElement)?.closest?.(".search")) return;
+      escape.current();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
 
   const hasMaps = hasMapsKey;
 
@@ -335,13 +354,10 @@ export default function SettleApp() {
         aria-pressed={on}
         disabled={mins === null && !on}
         onClick={() => chooseMode(r.option, l.anchor, m)}
-        title={mins === null ? `No ${MODE_LABEL[m].toLowerCase()} route` : undefined}
+        title={mins === null ? `No ${MODE_LABEL[m].toLowerCase()} route` : walkable ? "Walkable: 15 min or less on foot" : m === l.anchor.mode ? "Default for this place" : undefined}
       >
-        <span className="mode-t">
-          <Icon name={m} size={13} />
-          {mins === undefined ? "…" : mins === null ? "–" : mins}
-        </span>
-        <span className="mode-l">{walkable ? "Walkable" : `${MODE_LABEL[m]}${m === l.anchor.mode ? " · default" : ""}`}</span>
+        <span className="mode-l">{MODE_LABEL[m]}</span>
+        <span className="mode-t">{mins === undefined ? "…" : mins === null ? "–" : mins}</span>
       </button>
     );
   };
@@ -355,26 +371,21 @@ export default function SettleApp() {
           <span className="ch-top">
             <span className="letter">{letter(o.id)}</span>
             <span className="t">
-              <b>{o.title}{r.leastTravel && <span className="tag">Least travel</span>}</b>
+              <b>{o.title}</b>
               <span>{[o.subtitle, o.price ? formatPrice(o.price) : null, o.bedrooms ? `${o.bedrooms} bed` : null].filter(Boolean).join(" · ")}</span>
-            </span>
-            <span className="tot">
-              <b>{r.dailyMinutes != null ? hm(r.dailyMinutes) : timesLoading ? "…" : "–"}</b>
-              per day
-            </span>
-          </span>
-          <span className="ch-chips">
-            <span className="chips">
-              {r.legs.map((l, ai) => (
-                <span key={l.anchor.id} className={`chip${typeof l.minutes === "number" && cmp.fastest[ai] === l.minutes ? " best" : ""}`} title={`${l.anchor.name} · ${MODE_LABEL[l.mode]}`} style={swatchStyle(l.anchor)}>
-                  <Icon name={l.anchor.icon} size={12} />
-                  {l.minutes === undefined ? "…" : l.minutes === null ? "–" : `${l.minutes} m`}
-                  {l.overridden && <i className="ov" />}
-                </span>
-              ))}
             </span>
             <Icon name="chev" size={14} className="chev" />
           </span>
+          {!open && (
+            <span className="chips">
+              {r.legs.map((l, ai) => (
+                <span key={l.anchor.id} className={`chip${typeof l.minutes === "number" && cmp.fastest[ai] === l.minutes ? " best" : ""}`} title={`${MODE_LABEL[l.mode]}${typeof l.minutes === "number" && cmp.fastest[ai] === l.minutes ? " · fastest of your homes" : ""}`} style={swatchStyle(l.anchor)}>
+                  <span className="cn">{l.anchor.name}</span>
+                  {l.minutes === undefined ? (timesLoading ? "…" : "–") : l.minutes === null ? "–" : `${l.minutes} min`}
+                </span>
+              ))}
+            </span>
+          )}
         </button>
         {open && (
           <div className="cb">
@@ -383,14 +394,11 @@ export default function SettleApp() {
               return (
                 <div key={l.anchor.id} className="leg" style={swatchStyle(l.anchor)}>
                   <div className="leg-h">
-                    <span className="badge a"><Icon name={l.anchor.icon} size={13} /></span>
-                    <span className="t">
-                      <b>{l.anchor.name}{l.overridden && <i className="ov" title="Changed from the default" />}</b>
-                      <span>{typeof l.minutes === "number" ? `Return trip · ${l.minutes * 2} min/day` : l.minutes === null ? `No ${MODE_LABEL[l.mode].toLowerCase()} route` : "Working it out…"}</span>
-                    </span>
+                    <b className="leg-n">{l.anchor.name}</b>
                     {l.overridden && (
-                      <button className="link" onClick={() => chooseMode(o, l.anchor, l.anchor.mode)}>Reset to {MODE_LABEL[l.anchor.mode].toLowerCase()}</button>
+                      <button className="link" onClick={() => chooseMode(o, l.anchor, l.anchor.mode)}>Reset</button>
                     )}
+                    <span className="leg-t">{typeof l.minutes === "number" ? `${l.minutes} min` : l.minutes === null ? "No route" : "…"}</span>
                   </div>
                   <div className="modes" role="group" aria-label={`How you get to ${l.anchor.name}`}>{MODES.map((m) => modeButton(r, l, m))}</div>
                   {legErrors[k] && <p className="err">{legErrors[k]}</p>}
@@ -415,8 +423,8 @@ export default function SettleApp() {
       <div className="nav">
         {anchors.map((a) => (
           <div key={a.id}>
-            <button className="prow" aria-expanded={edit === a.id} onClick={() => { setEdit(edit === a.id ? null : a.id); setAdding(false); }}>
-              <span className="badge lg a" style={swatchStyle(a)}><Icon name={a.icon} size={15} /></span>
+            <button className="prow" aria-expanded={edit === a.id} onClick={() => { setEdit(edit === a.id ? null : a.id); setAdding(false); }} style={swatchStyle(a)}>
+              <span className="bar" aria-hidden="true" />
               <span className="t">
                 <b>{a.name}</b>
                 <span>{MODE_LABEL[a.mode]} by default</span>
@@ -432,13 +440,6 @@ export default function SettleApp() {
                 {hasMaps && (
                   <PlaceSearch id={`move-${a.id}`} placeholder="Search to change the address" onPick={(pl) => update((p) => ({ ...p, anchors: p.anchors.map((x) => (x.id === a.id ? { ...x, id: newId(), location: pl.location, address: pl.address ?? [pl.title, pl.subtitle].filter(Boolean).join(", ") } : x)) }))} />
                 )}
-                <div className="icons" role="group" aria-label="Icon">
-                  {ANCHOR_ICONS.map((ic) => (
-                    <button key={ic.id} aria-pressed={a.icon === ic.id} title={ic.label} aria-label={ic.label} onClick={() => patchAnchor(a.id, { icon: ic.id, name: ANCHOR_ICONS.some((x) => x.label === a.name) ? ic.label : a.name })}>
-                      <Icon name={ic.id} size={14} />
-                    </button>
-                  ))}
-                </div>
                 <div className="seg" role="group" aria-label="Default way to get there">
                   {MODES.map((m) => (
                     <button key={m} aria-pressed={a.mode === m} onClick={() => patchAnchor(a.id, { mode: m })}>
@@ -463,14 +464,7 @@ export default function SettleApp() {
         {adding && (
           <div className="edit">
             <label className="flabel" htmlFor="new-name">Name <span>e.g. Work, Gym, Mum’s place</span></label>
-            <input id="new-name" className="text" autoFocus value={draft.name} maxLength={40} placeholder={ANCHOR_ICONS.find((x) => x.id === draft.icon)?.label} onChange={(e) => setDraft({ ...draft, name: e.target.value })} />
-            <div className="icons" role="group" aria-label="Icon">
-              {ANCHOR_ICONS.map((ic) => (
-                <button key={ic.id} aria-pressed={draft.icon === ic.id} title={ic.label} aria-label={ic.label} onClick={() => setDraft({ ...draft, icon: ic.id })}>
-                  <Icon name={ic.id} size={14} />
-                </button>
-              ))}
-            </div>
+            <input id="new-name" className="text" autoFocus value={draft.name} maxLength={40} placeholder="Place" onChange={(e) => setDraft({ ...draft, name: e.target.value })} />
             <div className="seg" role="group" aria-label="Usual way to get there">
               {MODES.map((m) => (
                 <button key={m} aria-pressed={draft.mode === m} onClick={() => setDraft({ ...draft, mode: m })}>
@@ -513,8 +507,7 @@ export default function SettleApp() {
             </div>
           )}
           <div className="subhead">
-            <span>Weekday 8am · return trips per day</span>
-            <span>Sort: travel</span>
+            <span>One-way travel times · weekday 8am</span>
           </div>
           {running && (
             <div className="status">
@@ -522,7 +515,7 @@ export default function SettleApp() {
             </div>
           )}
           {error && <p className="err" style={{ margin: "0 2px 10px" }}>{error}</p>}
-          {options.length ? cmp.rows.map(card) : <div className="empty">Add the homes you&apos;re considering. Settle works out the trip from each one to your places.</div>}
+          {options.length ? options.map((o) => cmp.rows.find((r) => r.option.id === o.id)!).map(card) : <div className="empty">Add the homes you&apos;re considering. Settle works out the trip from each one to your places.</div>}
           {!hasMaps && <p className="hint">Adding homes and places needs the Google Maps key (see README).</p>}
           <div className="hr" />
           {places}

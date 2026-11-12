@@ -65,7 +65,7 @@ function solve(items: SideItem[], markers: { id: string; at: Pt; r: number }[], 
     for (const m of markers) if (m.id !== it.id && inside(box, m.at, m.r)) collide += 5000;
     let routes = 0;
     for (const p of routePts) if (inside(box, p)) routes++;
-    return { side, collide, total: collide * 10 + routes * 25 + it.prefer.indexOf(side) * 30 };
+    return { side, collide, total: collide * 10 + routes * 60 + it.prefer.indexOf(side) * 30 };
   };
   const pick = (it: SideItem, others: Box[], stay?: Side) => {
     const scored = it.prefer.map((side) => score(it, side, others));
