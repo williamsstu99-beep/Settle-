@@ -14,7 +14,7 @@ describe("rank badges", () => {
   const rows = [row("A", [20]), row("B", [34]), row("C", [48])];
   it("names the fastest and orders the rest", () => {
     expect(rankBadge(rows, 0, "A")).toEqual({ text: "Fastest", strong: true });
-    expect(rankBadge(rows, 0, "B")).toEqual({ text: "2nd fastest of 3", strong: false });
+    expect(rankBadge(rows, 0, "B")).toEqual({ text: "2nd of 3", strong: false });
     expect(rankBadge(rows, 0, "C")).toEqual({ text: "3rd of 3", strong: false });
   });
   it("calls out the cheapest when it isn't the fastest", () => {

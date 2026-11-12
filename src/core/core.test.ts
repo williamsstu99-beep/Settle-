@@ -184,10 +184,10 @@ describe("progressive route drawing", () => {
 
 describe("share links keep mode choices", () => {
   it("round-trips per-route overrides by position", () => {
-    const plan = { ...EXAMPLE_PLAN, overrides: { "ex-2|ex-work": "drive" as const, "ex-3|ex-gym": "walk" as const } };
+    const plan = { ...EXAMPLE_PLAN, overrides: { "ex-2|ex-work": "transit" as const, "ex-3|ex-gym": "walk" as const } };
     const back = decodePlan(encodePlan(plan))!;
     const o = (i: number) => back.options[i].id, a = (i: number) => back.anchors[i].id;
-    expect(back.overrides).toEqual({ [`${o(1)}|${a(0)}`]: "drive", [`${o(2)}|${a(1)}`]: "walk" });
+    expect(back.overrides).toEqual({ [`${o(1)}|${a(0)}`]: "transit", [`${o(2)}|${a(1)}`]: "walk" });
   });
 });
 
@@ -214,5 +214,22 @@ describe("listing photos", () => {
     expect(safePhoto("http://trademe.tmcdn.co.nz/x.jpg")).toBeUndefined();
     expect(safePhoto("https://evil.example.com/x.jpg")).toBeUndefined();
     expect(safePhoto("javascript:alert(1)")).toBeUndefined();
+  });
+});
+
+import { migratePlan } from "./plan";
+
+describe("driving by default", () => {
+  it("switches places in older saved plans to drive once, keeping other route choices", () => {
+    const old = { anchors: [{ id: "w", name: "Work", icon: "work" as const, location: { lat: 0, lng: 0 }, mode: "transit" as const }], options: [], overrides: { "a|w": "drive" as const, "b|w": "bike" as const } };
+    const p = migratePlan(old);
+    expect(p.anchors[0].mode).toBe("drive");
+    expect(p.overrides).toEqual({ "b|w": "bike" });
+    expect(p.driveDefault).toBe(true);
+    const later = { ...p, anchors: [{ ...p.anchors[0], mode: "walk" as const }] };
+    expect(migratePlan(later).anchors[0].mode).toBe("walk"); // only once
+  });
+  it("uses drive for the example and for share links without a mode", () => {
+    expect(EXAMPLE_PLAN.anchors.every((a) => a.mode === "drive")).toBe(true);
   });
 });

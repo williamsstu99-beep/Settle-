@@ -10,6 +10,8 @@ Compare homes by how they fit your life. Add the places that matter (work, the g
 - **Per-route modes:** each home → place route uses the place's default mode unless you pick another on that home's card. Picking one fetches just that route and swaps it on the map.
 - **Map:** each home is a charcoal hub at its exact location with a card docked beside it (no connector line); the selected home's card expands, with its photo when there is one. Each place is a marker in its own colour (5-colour palette, max 5 places) with a tabbed card showing the time from the selected home, a rank badge (Fastest / 2nd fastest of 3 / Cheapest), a mode detail line and, for transit, Google's fare when returned. Every home's routes are drawn thin grey; the selected home's are drawn in place colours from the hub to each marker. Card sides (`src/core/layout.ts`) are only recalculated when homes, places, the selection or the zoom level change, never on pan, and keep their side while it's clear.
 - **Compare:** selects each home in turn from most to least daily travel, so the best home is shown last and stays selected. Skip during, Replay after; reduced motion skips straight to the end.
+- **Along the way:** for the selected home, search any category (gym, café, school, childcare…) along its route to one of your places. Results come from the Places API (New) text search with `searchAlongRouteParameters`, with the extra minutes each stop adds; any result can be added as a place.
+- **Step through routes:** selecting a home draws its routes one place at a time and lights up each place's card as its route arrives (switch on the map to turn it off). Places default to driving.
 - **Share:** the whole plan is encoded in the link (`#s=…`). Nothing is stored on the server.
 
 The engine is deliberately general (anchors and options, not flats and workplaces), so other uses (buying, jobs, schools, relocation) are new screens rather than a rebuild.
@@ -23,6 +25,7 @@ The engine is deliberately general (anchors and options, not flats and workplace
 | `src/server` | Google Routes client with caching, TradeMe API client, rate limiting. |
 | `src/app/api/times` | `POST` durations for every home × place × mode (Route Matrix API). |
 | `src/app/api/routes` | `POST` route lines for home → place pairs in a given mode (Routes API, max 48 per request). |
+| `src/app/api/along` | `POST` suggestions along a route (Places API text search along route), with detour minutes. |
 | `src/app/api/listing` | `GET ?url=` turns a TradeMe link into a home. |
 | `src/components` | The UI: side panel (`SettleApp`), map (`MapView`), address search (`PlaceSearch`). |
 
@@ -39,7 +42,7 @@ Without keys the app still opens with an example plan, but the map, address sear
 ### Google Maps Platform
 
 1. Create a project at [console.cloud.google.com](https://console.cloud.google.com) and turn on billing (Google includes a monthly free allowance per API).
-2. Enable **Maps JavaScript API**, **Places API (New)** and **Routes API** (the Routes API covers both route lines and the route matrix). Optionally enable the **Elevation API** and allow it on the server key for "Flat / Some hills / Hilly" on bike and walk routes.
+2. Enable **Maps JavaScript API**, **Places API (New)** and **Routes API** (the Routes API covers both route lines and the route matrix). The server key also needs **Places API (New)** allowed for Along the way suggestions. Optionally enable the **Elevation API** and allow it on the server key for "Flat / Some hills / Hilly" on bike and walk routes.
 3. Create two API keys:
    - **Browser key** → `NEXT_PUBLIC_GOOGLE_MAPS_API_KEY`. Restrict it to *Websites* (your domains, plus `localhost:3000` for development) and to the Maps JavaScript and Places APIs.
    - **Server key** → `GOOGLE_MAPS_SERVER_KEY`. Restrict it to the Routes API only.

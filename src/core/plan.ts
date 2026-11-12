@@ -4,6 +4,8 @@ import type { Anchor, Mode, Option } from "./types";
 export type Plan = {
   anchors: Anchor[];
   options: Option[];
+  /** Set once places default to driving (most people in Auckland drive). Older saved plans are moved over on load. */
+  driveDefault?: boolean;
   /** Mode choices for individual home → place routes, keyed `${optionId}|${anchorId}`. */
   overrides?: Record<string, Mode>;
   example?: boolean;
@@ -42,11 +44,24 @@ export const OPTION_COLORS = ["#4E8B6A", "#4F6FA3", "#C27D55", "#7E6AA6", "#3E87
 
 export const newId = () => Math.random().toString(36).slice(2, 10);
 
+/**
+ * Plans saved before driving became the default get every place switched to
+ * drive once. Individual route choices (overrides) are kept, except ones that
+ * now match the default.
+ */
+export function migratePlan(p: Plan): Plan {
+  if (p.driveDefault) return p;
+  const anchors = p.anchors.map((a) => ({ ...a, mode: "drive" as const }));
+  const overrides = Object.fromEntries(Object.entries(p.overrides ?? {}).filter(([, m]) => m !== "drive"));
+  return { ...p, anchors, overrides, driveDefault: true };
+}
+
 export const EXAMPLE_PLAN: Plan = {
   example: true,
+  driveDefault: true,
   anchors: [
-    { id: "ex-work", name: "Work", icon: "work", location: { lat: -36.841, lng: 174.756 }, address: "Wynyard Quarter, Auckland", mode: "transit", color: "sky" },
-    { id: "ex-gym", name: "Gym", icon: "gym", location: { lat: -36.869, lng: 174.778 }, address: "Newmarket, Auckland", mode: "bike", color: "peach" },
+    { id: "ex-work", name: "Work", icon: "work", location: { lat: -36.841, lng: 174.756 }, address: "Wynyard Quarter, Auckland", mode: "drive", color: "sky" },
+    { id: "ex-gym", name: "Gym", icon: "gym", location: { lat: -36.869, lng: 174.778 }, address: "Newmarket, Auckland", mode: "drive", color: "peach" },
     { id: "ex-partner", name: "Girlfriend’s place", icon: "partner", location: { lat: -36.887, lng: 174.761 }, address: "Mount Eden, Auckland", mode: "drive", color: "rose" },
   ],
   options: [
@@ -95,7 +110,7 @@ export function decodePlan(s: string): Plan | null {
     const raw = JSON.parse(fromB64Url(s)) as { a?: unknown[][]; o?: unknown[][]; m?: unknown[][] };
     const anchors = (raw.a ?? []).slice(0, MAX_ANCHORS).flatMap((a, i): Plan["anchors"] => {
       if (!Array.isArray(a) || !num(a[2], -90, 90) || !num(a[3], -180, 180)) return [];
-      return [{ id: newId(), name: str(a[0], 40) || "Place", icon: (ICONS.has(a[1] as string) ? a[1] : "other") as Plan["anchors"][number]["icon"], location: { lat: a[2] as number, lng: a[3] as number }, mode: (MODES.has(a[4] as string) ? a[4] : "transit") as Plan["anchors"][number]["mode"], address: str(a[5]) || undefined, color: ANCHOR_PALETTE[i % ANCHOR_PALETTE.length].id }];
+      return [{ id: newId(), name: str(a[0], 40) || "Place", icon: (ICONS.has(a[1] as string) ? a[1] : "other") as Plan["anchors"][number]["icon"], location: { lat: a[2] as number, lng: a[3] as number }, mode: (MODES.has(a[4] as string) ? a[4] : "drive") as Plan["anchors"][number]["mode"], address: str(a[5]) || undefined, color: ANCHOR_PALETTE[i % ANCHOR_PALETTE.length].id }];
     });
     const options = (raw.o ?? []).slice(0, MAX_OPTIONS).flatMap((o): Plan["options"] => {
       if (!Array.isArray(o) || !num(o[2], -90, 90) || !num(o[3], -180, 180)) return [];
@@ -109,7 +124,7 @@ export function decodePlan(s: string): Plan | null {
       const o = options[m[0] as number], a = anchors[m[1] as number];
       if (o && a && a.mode !== m[2]) overrides[`${o.id}|${a.id}`] = m[2] as Mode;
     }
-    return { anchors, options, overrides };
+    return { anchors, options, overrides, driveDefault: true };
   } catch {
     return null;
   }

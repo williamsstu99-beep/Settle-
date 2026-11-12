@@ -12,7 +12,7 @@ import { CountUp } from "./CountUp";
 import { HtmlMarker } from "./HtmlMarker";
 import { Icon, type IconName } from "./icons";
 import { MAP_STYLE } from "./mapStyle";
-import { DRAW_MS, RouteLayer, type DrawRoute } from "./RouteLayer";
+import { DRAW_MS, RouteLayer, STEP_DRAW, STEP_GAP, type DrawRoute } from "./RouteLayer";
 
 const MAP_ID = process.env.NEXT_PUBLIC_GOOGLE_MAP_ID;
 
@@ -44,12 +44,18 @@ type Props = {
   /** Bumped by Compare / Replay so the selected home's routes redraw even if it's unchanged. */
   epoch: number;
   instant: boolean;
+  /** Step-through reveal: draw the selected home's routes one place at a time. */
+  stepped: boolean;
   fitKey: string;
   dropMode: boolean;
   onSelect: (id: string) => void;
   onDetail: (id: string) => void;
   onAnchorClick: (id: string) => void;
   onMapClick: (p: LatLng) => void;
+  /** "Along the way" suggestions to pin on the map, numbered as in the panel. */
+  stops: { id: string; name: string; location: LatLng }[];
+  hoverStop: string | null;
+  onStopHover: (id: string | null) => void;
 };
 
 /**
@@ -161,21 +167,26 @@ type PlaceProps = {
   badge: { text: string; strong: boolean } | null;
   countKey: string;
   instant: boolean;
+  /** When this place's route starts and how long it takes (step-through reveal). */
+  delay: number;
+  drawMs: number;
   onClick: (id: string) => void;
 };
 
 /** Place marker at the exact location, with a tabbed card whose edge it sits on. */
-const PlaceMarker = memo(function PlaceMarker({ a, sw, side, view, badge, countKey, instant, onClick }: PlaceProps) {
+const PlaceMarker = memo(function PlaceMarker({ a, sw, side, view, badge, countKey, instant, delay, drawMs, onClick }: PlaceProps) {
   const fare = view ? fareLine({ mode: view.mode, leg: view.leg }) : null;
-  const style = { "--tab": sw.tab, "--text": sw.text, "--route": sw.route, "--marker": sw.marker } as React.CSSProperties;
+  // Step-through: until its route arrives the card waits faded, then lights up.
+  const stepIn = !instant && drawMs < DRAW_MS;
+  const style = { "--tab": sw.tab, "--text": sw.text, "--route": sw.route, "--marker": sw.marker, "--arrive": `${delay + drawMs * 0.85}ms` } as React.CSSProperties;
   return (
     <div className={`am side-${side}`} style={style}>
-      <div key={side} className={`acard${fare ? " fare" : ""}${view ? "" : " bare"}`} onClick={() => onClick(a.id)} role="button" tabIndex={0} aria-label={`Edit ${a.name}`} onKeyDown={(e) => e.key === "Enter" && onClick(a.id)}>
+      <div key={`${side}${view ? countKey.split(":").slice(0, 2).join(":") : ""}`} className={`acard${fare ? " fare" : ""}${view ? (stepIn ? " arrive" : "") : " bare"}`} onClick={() => onClick(a.id)} role="button" tabIndex={0} aria-label={`Edit ${a.name}`} onKeyDown={(e) => e.key === "Enter" && onClick(a.id)}>
         <div className="atab"><b>{a.name}</b>{suburbOf(a) && <span>{suburbOf(a)}</span>}</div>
         {view && <div className="abody">
           <div className="arow">
             <span className="atime">
-              {typeof view?.minutes === "number" ? <CountUp key={countKey} value={view.minutes} ms={DRAW_MS} instant={instant} /> : view?.minutes === null ? "–" : "…"}
+              {typeof view?.minutes === "number" ? <CountUp key={countKey} value={view.minutes} ms={drawMs} delay={delay} instant={instant} /> : view?.minutes === null ? "–" : "…"}
               <small>min</small>
             </span>
             {badge && <span className={`rank${badge.strong ? " strong" : ""}`}>{badge.text}</span>}
@@ -210,6 +221,7 @@ export default function MapView(p: Props) {
           const last = pieces.length - 1;
           pieces[last] = { ...pieces[last], path: [...pieces[last].path, a.location] };
           const isSel = o.id === selected;
+          const stepIn = isSel && p.stepped && !p.instant;
           const rides = isSel ? (steps ?? []).filter((s) => s.kind === "ride" && s.line).map((s) => ({ line: s.line!, vehicle: s.vehicle, at: midpoint(s.path)! })) : [];
           return [{
             key: `${isSel ? p.epoch : 0}:${legKey(o.id, a.id, mode)}`,
@@ -218,14 +230,16 @@ export default function MapView(p: Props) {
             color: anchorColor(a, ai).route,
             parts: pieces.map((x) => ({ m: measure(x.path), dashed: x.dashed })),
             selected: isSel,
+            delay: stepIn ? ai * STEP_GAP : 0,
+            drawMs: stepIn ? STEP_DRAW : DRAW_MS,
             rides,
             pts: isSel ? pieces.flatMap((x) => x.path.filter((_, i) => i % 2 === 0)) : [],
           }];
         }),
       ),
-    [options, anchors, legs, overrides, selected, p.epoch],
+    [options, anchors, legs, overrides, selected, p.epoch, p.stepped, p.instant],
   );
-  const drawRoutes: DrawRoute[] = useMemo(() => routes.map(({ key, optionId, color, parts, selected: s }) => ({ key, optionId, color, parts, selected: s })), [routes]);
+  const drawRoutes: DrawRoute[] = useMemo(() => routes.map(({ key, optionId, color, parts, selected: s, delay, drawMs }) => ({ key, optionId, color, parts, selected: s, delay, drawMs })), [routes]);
 
   /* ---------- card sides: recomputed only when homes/places, selection, selected routes or zoom change ---------- */
   const [sides, setSides] = useState<Record<string, Side>>({});
@@ -306,6 +320,15 @@ export default function MapView(p: Props) {
           </HtmlMarker>
         ))}
 
+      {p.stops.map((st, i) => (
+        <HtmlMarker key={`stop-${st.id}`} position={st.location} zIndex={p.hoverStop === st.id ? 45 : 15}>
+          <button className={`stop${p.hoverStop === st.id ? " hov" : ""}`} onMouseEnter={() => p.onStopHover(st.id)} onMouseLeave={() => p.onStopHover(null)} aria-label={`${i + 1}: ${st.name}`}>
+            {i + 1}
+            {p.hoverStop === st.id && <span className="stop-name">{st.name}</span>}
+          </button>
+        </HtmlMarker>
+      ))}
+
       {anchors.map((a, ai) => {
         const l = selRow?.legs[ai];
         return (
@@ -318,6 +341,8 @@ export default function MapView(p: Props) {
               badge={selected ? rankBadge(rows, ai, selected) : null}
               countKey={`${growKey}:${l?.mode}:${l?.minutes}`}
               instant={p.instant}
+              delay={p.stepped && !p.instant ? ai * STEP_GAP : 0}
+              drawMs={p.stepped && !p.instant ? STEP_DRAW : DRAW_MS}
               onClick={p.onAnchorClick}
             />
           </HtmlMarker>
