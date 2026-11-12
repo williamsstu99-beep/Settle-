@@ -10,23 +10,29 @@ export type RoutePart = { m: Measured; dashed: boolean };
 export type DrawRoute = {
   key: string; // unique per home, place and mode
   optionId: string;
-  color: string; // the place's colour
+  color: string; // the place's route colour
   parts: RoutePart[];
-  /** Background route of a home that isn't selected ("Show all routes"). */
-  faint?: boolean;
+  selected: boolean;
 };
 
-const GREY = "#AEB4BD";
-export const DRAW_MS = 1200; // routes leave the home and reach each place
-export const FEED_MS = 850; // then a light travels back along the route into the home
-export const FADE_OUT_MS = 380; // routes of the previously selected home
+export const GREY = "#B5BBC3";
+export const DRAW_MS = 1200; // coloured routes draw out of the hub
+export const FADE_MS = 400; // colour fades back to grey when another home is selected
+export const PULSE_MS = 3200; // one pulse travels the repeat distance
+const PULSE_GAP = 124; // px between pulses (dasharray "4 120")
 
 type Poly = Pick<google.maps.Polyline, "setOptions" | "setMap">;
-type Part = { casing: Poly; core: Poly; m: Measured; dashed: boolean; start: number; end: number };
-export type Line = { route: DrawRoute; parts: Part[]; born: number | null; dying: number | null };
+type Part = { grey: Poly; casing: Poly; core: Poly; m: Measured; dashed: boolean; start: number; end: number };
+export type Line = {
+  route: DrawRoute;
+  parts: Part[];
+  colourAt: number | null; // when it became selected (draws out); null = already drawn
+  greyAt: number | null; // when it stopped being selected (colour fades)
+  dying: number | null; // removed (e.g. mode changed): everything fades out
+};
 
 /** Split a route's length into fractions per part, so one progress value can drive all parts. */
-export function layoutParts(route: DrawRoute): { m: Measured; dashed: boolean; start: number; end: number }[] {
+export function layoutParts(route: Pick<DrawRoute, "parts">): { m: Measured; dashed: boolean; start: number; end: number }[] {
   const total = route.parts.reduce((s, p) => s + p.m.total, 0) || 1;
   let acc = 0;
   return route.parts.map((p) => {
@@ -36,13 +42,10 @@ export function layoutParts(route: DrawRoute): { m: Measured; dashed: boolean; s
   });
 }
 
-export function makeLine(route: DrawRoute, create: () => Poly, born: number | null): Line {
-  return { route, born, dying: null, parts: layoutParts(route).map((p) => ({ ...p, casing: create(), core: create() })) };
-}
-
 /**
- * Match lines to routes: new routes draw themselves in (unless `instant`),
- * removed routes fade out and are then taken off the map.
+ * Match lines to routes. A route that becomes selected draws its colour out of
+ * the hub; one that stops being selected fades its colour back to grey; a
+ * removed route fades out completely.
  */
 export function syncLines(lines: Map<string, Line>, routes: DrawRoute[], now: number, create: () => Poly, instant = false) {
   const want = new Set(routes.map((r) => r.key));
@@ -54,42 +57,59 @@ export function syncLines(lines: Map<string, Line>, routes: DrawRoute[], now: nu
     } else if (l.dying == null) l.dying = now;
   }
   for (const r of routes) {
-    const existing = lines.get(r.key);
-    if (existing) {
-      existing.dying = null;
-      existing.route = r;
-    } else lines.set(r.key, makeLine(r, create, instant ? null : now));
+    const l = lines.get(r.key);
+    if (!l) {
+      lines.set(r.key, {
+        route: r,
+        parts: layoutParts(r).map((p) => ({ ...p, grey: create(), casing: create(), core: create() })),
+        colourAt: r.selected && !instant ? now : null,
+        greyAt: null,
+        dying: null,
+      });
+      continue;
+    }
+    l.dying = null;
+    if (r.selected && !l.route.selected) {
+      l.colourAt = instant ? null : now;
+      l.greyAt = null;
+    } else if (!r.selected && l.route.selected) {
+      l.greyAt = instant ? now - FADE_MS : now;
+      l.colourAt = null;
+    }
+    l.route = r;
   }
 }
 
 function retire(l: Line) {
   for (const p of l.parts) {
+    p.grey.setMap(null);
     p.casing.setMap(null);
     p.core.setMap(null);
   }
 }
 
 /**
- * Draws the given routes on the Google map. Changing the set of routes (a
- * different home selected, or one route's mode changed) fades the old lines
- * and draws the new ones from the home outwards, then sends a light back
- * along each into the home.
+ * Every home's routes on the Google map: thin grey for all homes, and the
+ * selected home's routes in each place's colour on a white casing, drawn out
+ * of its hub, with soft light pulses travelling from the hub to each place.
  */
 export function RouteLayer({ routes, instant }: { routes: DrawRoute[]; instant: boolean }) {
   const map = useMap();
   const lines = useRef(new Map<string, Line>());
   const raf = useRef(0);
+  const still = useRef(instant);
 
   useEffect(() => {
+    still.current = instant;
     if (!map) return;
     const ls = lines.current;
     const create = () => new google.maps.Polyline({ map, clickable: false, geodesic: false, visible: false });
     syncLines(ls, routes, performance.now(), create, instant);
-    const tick = (t: number) => {
-      raf.current = paint(ls, t) ? requestAnimationFrame(tick) : 0;
-    };
     cancelAnimationFrame(raf.current);
-    raf.current = paint(ls, performance.now()) ? requestAnimationFrame(tick) : 0;
+    const tick = (t: number) => {
+      raf.current = paint(ls, t, still.current) ? requestAnimationFrame(tick) : 0;
+    };
+    raf.current = paint(ls, performance.now(), instant) ? requestAnimationFrame(tick) : 0;
   }, [map, routes, instant]);
 
   useEffect(() => {
@@ -104,67 +124,71 @@ export function RouteLayer({ routes, instant }: { routes: DrawRoute[]; instant: 
   return null;
 }
 
-const dash = (color: string, opacity: number, weight: number): google.maps.IconSequence => ({
+const dashes = (color: string, opacity: number, weight: number): google.maps.IconSequence => ({
   icon: { path: "M 0,-1 0,1", strokeColor: color, strokeOpacity: opacity, strokeWeight: weight, scale: 1.6 },
   offset: "0",
   repeat: `${Math.round(weight * 3)}px`,
 });
-const dot = (color: string, offset: string, fill = color, scale = 5): google.maps.IconSequence => ({
-  icon: { path: google.maps.SymbolPath.CIRCLE, scale, fillColor: fill, fillOpacity: 1, strokeColor: fill === "#ffffff" ? color : "#ffffff", strokeWeight: fill === "#ffffff" ? 3 : 2 },
-  offset,
+const head = (color: string): google.maps.IconSequence => ({
+  icon: { path: google.maps.SymbolPath.CIRCLE, scale: 5, fillColor: color, fillOpacity: 1, strokeColor: "#ffffff", strokeWeight: 2 },
+  offset: "100%",
+});
+const pulses = (offsetPx: number): google.maps.IconSequence => ({
+  icon: { path: "M 0,-2 0,2", strokeColor: "#ffffff", strokeOpacity: 0.7, strokeWeight: 3, scale: 1 },
+  offset: `${offsetPx.toFixed(1)}px`,
+  repeat: `${PULSE_GAP}px`,
 });
 
-/** Style every line for time `t`. Returns true while anything is still moving. */
-export function paint(lines: Map<string, Line>, t: number): boolean {
+/** Style every line for time `t`. Returns true while anything is moving (including pulses). */
+export function paint(lines: Map<string, Line>, t: number, instant = false): boolean {
   let moving = false;
+  const pulseOffset = instant ? 0 : ((t % PULSE_MS) / PULSE_MS) * PULSE_GAP;
+
   for (const [key, l] of lines) {
     const r = l.route;
-    const color = r.faint ? GREY : r.color;
-    let opacity = r.faint ? 0.5 : 1;
-    const weight = r.faint ? 2.5 : 4;
-    let casing = r.faint ? 0 : 0.95;
-    let progress = 1;
-    let head = false;
-    let feed: number | null = null; // 1 → 0: position of the light travelling home
-
-    if (l.born != null) {
-      const age = t - l.born;
-      const p = Math.min(1, Math.max(0, age / DRAW_MS));
-      progress = easeInOut(p);
-      head = p < 1;
-      if (p >= 1 && !r.faint && age < DRAW_MS + FEED_MS) feed = 1 - easeInOut((age - DRAW_MS) / FEED_MS);
-      if (age >= DRAW_MS + (r.faint ? 0 : FEED_MS)) l.born = null;
-      else moving = true;
-    }
+    let fade = 1; // whole line, when removed
     if (l.dying != null) {
-      const f = 1 - (t - l.dying) / FADE_OUT_MS;
-      if (f <= 0) {
+      fade = 1 - (t - l.dying) / FADE_MS;
+      if (fade <= 0) {
         retire(l);
         lines.delete(key);
         continue;
       }
-      opacity *= f;
-      casing *= f;
-      head = false;
-      feed = null;
       moving = true;
     }
 
+    // colour layer
+    let colour = r.selected ? 1 : 0;
+    let progress = 1;
+    let drawing = false;
+    if (r.selected && l.colourAt != null) {
+      const p = Math.min(1, Math.max(0, (t - l.colourAt) / DRAW_MS));
+      progress = easeInOut(p);
+      drawing = p < 1;
+      if (p >= 1) l.colourAt = null;
+      else moving = true;
+    }
+    if (!r.selected && l.greyAt != null) {
+      colour = Math.max(0, 1 - (t - l.greyAt) / FADE_MS);
+      if (colour > 0) moving = true;
+      else l.greyAt = null;
+    }
+    colour *= fade;
+    if (r.selected && !drawing && !instant && l.dying == null) moving = true; // pulses keep travelling
+
     const lastLive = l.parts.findLastIndex((p) => progress > p.start);
-    const z = r.faint ? 1 : l.dying != null ? 5 : 10;
     l.parts.forEach((p, i) => {
       const local = p.end > p.start ? (progress - p.start) / (p.end - p.start) : 1;
-      const show = local > 0;
-      const path = show ? partialPath(p.m, Math.min(1, local)) : p.m.path;
+      const showColour = colour > 0 && local > 0;
+      const path = showColour ? partialPath(p.m, Math.min(1, local)) : p.m.path;
       const icons: google.maps.IconSequence[] = [];
-      if (p.dashed) icons.push(dash(color, opacity, weight));
-      if (head && i === lastLive) icons.push(dot(color, "100%"));
-      if (feed != null && feed >= p.start && feed <= p.end) {
-        const at = p.end > p.start ? (feed - p.start) / (p.end - p.start) : 0;
-        icons.push(dot(color, `${(at * 100).toFixed(1)}%`, "#ffffff", 4.5));
-      }
-      p.core.setOptions({ visible: show, path, strokeColor: color, strokeOpacity: p.dashed ? 0 : opacity, strokeWeight: weight, zIndex: z + 1, icons });
-      p.casing.setOptions({ visible: show && casing > 0, path, strokeColor: "#ffffff", strokeOpacity: casing, strokeWeight: weight + 4, zIndex: z });
+      if (showColour && p.dashed) icons.push(dashes(r.color, colour, 5));
+      if (showColour && drawing && i === lastLive) icons.push(head(r.color));
+      if (showColour && r.selected && !drawing && l.dying == null) icons.push(pulses(pulseOffset));
+
+      p.grey.setOptions({ visible: true, path: p.m.path, strokeColor: GREY, strokeOpacity: p.dashed ? 0 : 0.95 * fade, strokeWeight: 2, zIndex: 1, icons: p.dashed ? [dashes(GREY, 0.95 * fade, 2)] : [] });
+      p.casing.setOptions({ visible: showColour, path, strokeColor: "#ffffff", strokeOpacity: colour, strokeWeight: 9, zIndex: 10 });
+      p.core.setOptions({ visible: showColour, path, strokeColor: r.color, strokeOpacity: p.dashed ? 0 : colour, strokeWeight: 5, zIndex: 11, icons });
     });
   }
   return moving;

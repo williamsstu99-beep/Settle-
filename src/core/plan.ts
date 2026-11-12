@@ -10,21 +10,32 @@ export type Plan = {
 };
 
 export const MAX_OPTIONS = 6;
-export const MAX_ANCHORS = 8;
+export const MAX_ANCHORS = 5; // one per place colour, so no two places ever share a colour
 
-/**
- * Place colours: fixed, assigned in order as places are added, and never
- * reused while a place keeps its colour. Distinct in lightness as well as hue.
- */
-export const ANCHOR_COLORS = ["#2F5FB3", "#B8651A", "#A83E70", "#2E7D6B", "#6A4FB0", "#8A6D1F", "#3F8FB5", "#9C4A3A"];
+/** A place's colours: tab background, text, route line and marker icon. */
+export type Swatch = { id: string; tab: string; text: string; route: string; marker: string };
 
+/** Place palette, assigned in order as places are added. The only colours on the map. */
+export const ANCHOR_PALETTE: Swatch[] = [
+  { id: "sky", tab: "#DDE8F8", text: "#2B4A80", route: "#6E93D6", marker: "#4F77C2" },
+  { id: "peach", tab: "#FAE6D6", text: "#844518", route: "#DB935C", marker: "#C2763D" },
+  { id: "rose", tab: "#F6E0EA", text: "#7A2E54", route: "#C97AA2", marker: "#B05D88" },
+  { id: "sage", tab: "#DCEFE3", text: "#2E6247", route: "#6FB28E", marker: "#4E9470" },
+  { id: "lavender", tab: "#E8E3F7", text: "#4A3F8A", route: "#9A8CD9", marker: "#7B6CC4" },
+];
+
+/** The first palette colour no current place is using. */
 export function nextAnchorColor(anchors: { color?: string }[]): string {
-  const used = new Set(anchors.map((a) => a.color));
-  return ANCHOR_COLORS.find((c) => !used.has(c)) ?? ANCHOR_COLORS[anchors.length % ANCHOR_COLORS.length];
+  const used = new Set(anchors.map((a, i) => anchorColor(a, i).id));
+  return (ANCHOR_PALETTE.find((c) => !used.has(c.id)) ?? ANCHOR_PALETTE[anchors.length % ANCHOR_PALETTE.length]).id;
 }
 
-/** A place's colour, falling back to its position for plans saved before colours existed. */
-export const anchorColor = (a: { color?: string }, index: number) => a.color ?? ANCHOR_COLORS[index % ANCHOR_COLORS.length];
+/** A place's swatch. Plans saved before swatches existed fall back to the place's position. */
+export const anchorColor = (a: { color?: string }, index: number): Swatch =>
+  ANCHOR_PALETTE.find((c) => c.id === a.color) ?? ANCHOR_PALETTE[index % ANCHOR_PALETTE.length];
+
+/** Letters for homes, matching the panel and the map: A, B, C… */
+export const letterOf = (index: number) => String.fromCharCode(65 + (index % 26));
 
 /** Muted, distinguishable colours, one per option in order. */
 export const OPTION_COLORS = ["#4E8B6A", "#4F6FA3", "#C27D55", "#7E6AA6", "#3E8790", "#B06A80"];
@@ -34,9 +45,9 @@ export const newId = () => Math.random().toString(36).slice(2, 10);
 export const EXAMPLE_PLAN: Plan = {
   example: true,
   anchors: [
-    { id: "ex-work", name: "Work", icon: "work", location: { lat: -36.841, lng: 174.756 }, address: "Wynyard Quarter, Auckland", mode: "transit", color: "#2F5FB3" },
-    { id: "ex-gym", name: "Gym", icon: "gym", location: { lat: -36.869, lng: 174.778 }, address: "Newmarket, Auckland", mode: "bike", color: "#B8651A" },
-    { id: "ex-partner", name: "Girlfriend’s place", icon: "partner", location: { lat: -36.887, lng: 174.761 }, address: "Mount Eden, Auckland", mode: "drive", color: "#A83E70" },
+    { id: "ex-work", name: "Work", icon: "work", location: { lat: -36.841, lng: 174.756 }, address: "Wynyard Quarter, Auckland", mode: "transit", color: "sky" },
+    { id: "ex-gym", name: "Gym", icon: "gym", location: { lat: -36.869, lng: 174.778 }, address: "Newmarket, Auckland", mode: "bike", color: "peach" },
+    { id: "ex-partner", name: "Girlfriend’s place", icon: "partner", location: { lat: -36.887, lng: 174.761 }, address: "Mount Eden, Auckland", mode: "drive", color: "rose" },
   ],
   options: [
     { id: "ex-1", title: "Beach Road", subtitle: "Auckland CBD", location: { lat: -36.849, lng: 174.77 }, source: { kind: "manual" }, price: { amount: 560, period: "week", currency: "NZD" }, bedrooms: 1, propertyType: "Apartment" },
@@ -84,7 +95,7 @@ export function decodePlan(s: string): Plan | null {
     const raw = JSON.parse(fromB64Url(s)) as { a?: unknown[][]; o?: unknown[][]; m?: unknown[][] };
     const anchors = (raw.a ?? []).slice(0, MAX_ANCHORS).flatMap((a, i): Plan["anchors"] => {
       if (!Array.isArray(a) || !num(a[2], -90, 90) || !num(a[3], -180, 180)) return [];
-      return [{ id: newId(), name: str(a[0], 40) || "Place", icon: (ICONS.has(a[1] as string) ? a[1] : "other") as Plan["anchors"][number]["icon"], location: { lat: a[2] as number, lng: a[3] as number }, mode: (MODES.has(a[4] as string) ? a[4] : "transit") as Plan["anchors"][number]["mode"], address: str(a[5]) || undefined, color: ANCHOR_COLORS[i % ANCHOR_COLORS.length] }];
+      return [{ id: newId(), name: str(a[0], 40) || "Place", icon: (ICONS.has(a[1] as string) ? a[1] : "other") as Plan["anchors"][number]["icon"], location: { lat: a[2] as number, lng: a[3] as number }, mode: (MODES.has(a[4] as string) ? a[4] : "transit") as Plan["anchors"][number]["mode"], address: str(a[5]) || undefined, color: ANCHOR_PALETTE[i % ANCHOR_PALETTE.length].id }];
     });
     const options = (raw.o ?? []).slice(0, MAX_OPTIONS).flatMap((o): Plan["options"] => {
       if (!Array.isArray(o) || !num(o[2], -90, 90) || !num(o[3], -180, 180)) return [];

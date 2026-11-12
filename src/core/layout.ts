@@ -1,53 +1,28 @@
 /**
- * Screen-space placement for map cards. Each card belongs to a point (its dot)
- * and is tried in a few positions around it; the first position that doesn't
- * collide with already-placed cards or other dots wins, otherwise the least
- * bad one. Higher-priority cards are placed first and so get their favourite
- * spot. Pure and deterministic, so it can be tested without a map.
+ * Which side of its marker each map card sits on. Cards are drawn at a fixed
+ * CSS offset from their marker, so once a side is chosen the card moves with
+ * the map by itself. This only runs when the homes or places, the selection or
+ * the zoom level change; it never runs on pan. A card keeps its previous side
+ * while that side is still clear, so cards don't flip back and forth.
+ *
+ * Pure and deterministic; works in any pixel space (world pixels at the
+ * current zoom are fine, since only relative positions matter).
  */
 
 export type Pt = { x: number; y: number };
 export type Box = { x: number; y: number; w: number; h: number };
+export type Side = "right" | "left" | "above" | "below";
+export const SIDES: Side[] = ["right", "left", "above", "below"];
 
-export type CardInput = {
+export type SideItem = {
   id: string;
-  kind: "property" | "anchor";
-  at: Pt; // the dot, in pixels
-  w: number;
-  h: number;
-  priority: number; // lower is placed first
-  /** Where routes come from (anchors): the card prefers the far side of its dot. */
-  from?: Pt;
+  at: Pt; // the marker's centre
+  /** The card's box for each side, relative to nothing: absolute pixels. */
+  boxes: Record<Side, Box>;
+  /** Sides in order of preference. */
+  prefer: Side[];
+  priority: number; // lower is placed first and gets first pick
 };
-
-export type Placed = { id: string; box: Box; at: Pt; /** Where a leader line meets the card. */ joint: Pt; side: Side };
-export type Side = "above" | "below" | "left" | "right" | "above-left" | "above-right";
-
-const STEM = 22; // property card sits this far above its dot
-const GAP = 14; // anchor card distance from its dot
-const DOT_R = 10; // keep this much clear around every dot
-
-function boxFor(c: CardInput, side: Side): Box {
-  const { x, y } = c.at;
-  const gap = c.kind === "property" ? STEM : GAP;
-  switch (side) {
-    case "above": return { x: x - c.w / 2, y: y - gap - c.h, w: c.w, h: c.h };
-    case "below": return { x: x - c.w / 2, y: y + gap, w: c.w, h: c.h };
-    case "left": return { x: x - gap - c.w, y: y - c.h / 2, w: c.w, h: c.h };
-    case "right": return { x: x + gap, y: y - c.h / 2, w: c.w, h: c.h };
-    case "above-left": return { x: x - c.w + 24, y: y - gap - c.h, w: c.w, h: c.h };
-    case "above-right": return { x: x - 24, y: y - gap - c.h, w: c.w, h: c.h };
-  }
-}
-
-function sidesFor(c: CardInput): Side[] {
-  if (c.kind === "property") return ["above", "above-right", "above-left", "below", "right", "left"];
-  if (!c.from) return ["right", "left", "above", "below"];
-  // Prefer the side facing away from where the route arrives.
-  const dx = c.at.x - c.from.x, dy = c.at.y - c.from.y;
-  const dir: Record<"right" | "left" | "above" | "below", Pt> = { right: { x: 1, y: 0 }, left: { x: -1, y: 0 }, above: { x: 0, y: -1 }, below: { x: 0, y: 1 } };
-  return (Object.keys(dir) as (keyof typeof dir)[]).sort((a, b) => dir[b].x * dx + dir[b].y * dy - (dir[a].x * dx + dir[a].y * dy));
-}
 
 export function overlap(a: Box, b: Box): number {
   const w = Math.min(a.x + a.w, b.x + b.w) - Math.max(a.x, b.x);
@@ -55,45 +30,92 @@ export function overlap(a: Box, b: Box): number {
   return w > 0 && h > 0 ? w * h : 0;
 }
 
-const covers = (b: Box, p: Pt) => p.x > b.x - DOT_R && p.x < b.x + b.w + DOT_R && p.y > b.y - DOT_R && p.y < b.y + b.h + DOT_R;
+const inside = (b: Box, p: Pt, pad = 0) => p.x > b.x - pad && p.x < b.x + b.w + pad && p.y > b.y - pad && p.y < b.y + b.h + pad;
 
-/** The point on the box edge facing the dot, where a stem or leader line joins. */
-function jointFor(b: Box, side: Side): Pt {
-  switch (side) {
-    case "above": case "above-left": case "above-right": return { x: Math.min(Math.max(b.x + b.w / 2, b.x + 12), b.x + b.w - 12), y: b.y + b.h };
-    case "below": return { x: b.x + b.w / 2, y: b.y };
-    case "left": return { x: b.x + b.w, y: b.y + b.h / 2 };
-    case "right": return { x: b.x, y: b.y + b.h / 2 };
-  }
+/**
+ * @param markers every marker centre (hubs and place markers), so cards don't cover them
+ * @param routePts sample points along the selected home's routes, so cards avoid them
+ * @param prev the previous choice, kept when still clear (hysteresis)
+ */
+export function chooseSides(items: SideItem[], markers: { id: string; at: Pt; r: number }[], routePts: Pt[], prev: Record<string, Side> = {}): Record<string, Side> {
+  const kept = solve(items, markers, routePts, prev);
+  if (!Object.keys(prev).length) return kept;
+  // Keeping old sides can box a card in. If it does, also try a fresh layout and take the cleaner one.
+  const keptBad = collisions(items, kept);
+  if (keptBad === 0) return kept;
+  const fresh = solve(items, markers, routePts, {});
+  return collisions(items, fresh) < keptBad ? fresh : kept;
 }
 
-export function placeCards(cards: CardInput[], view?: Box): Placed[] {
-  const placed: Placed[] = [];
-  const dots = cards.map((c) => ({ id: c.id, at: c.at }));
-  for (const c of [...cards].sort((a, b) => a.priority - b.priority)) {
-    let best: { box: Box; side: Side; cost: number } | null = null;
-    sidesFor(c).forEach((side, i) => {
-      const box = boxFor(c, side);
-      let cost = i * 40; // mild preference for earlier sides
-      for (const p of placed) cost += overlap(box, p.box) * 10;
-      for (const d of dots) if (d.id !== c.id && covers(box, d.at)) cost += 4000;
-      if (view) {
-        const outside = c.w * c.h - overlap(box, view);
-        cost += outside * 4;
+/** Total overlap area between cards for a choice of sides. */
+export function collisions(items: SideItem[], sides: Record<string, Side>): number {
+  let total = 0;
+  for (let a = 0; a < items.length; a++) for (let b = a + 1; b < items.length; b++) total += overlap(items[a].boxes[sides[items[a].id]], items[b].boxes[sides[items[b].id]]);
+  return total;
+}
+
+function solve(items: SideItem[], markers: { id: string; at: Pt; r: number }[], routePts: Pt[], prev: Record<string, Side>): Record<string, Side> {
+  const order = [...items].sort((a, b) => a.priority - b.priority);
+  const out: Record<string, Side> = {};
+
+  const score = (it: SideItem, side: Side, others: Box[]) => {
+    const box = it.boxes[side];
+    let collide = 0;
+    for (const o of others) collide += overlap(box, o);
+    for (const m of markers) if (m.id !== it.id && inside(box, m.at, m.r)) collide += 5000;
+    let routes = 0;
+    for (const p of routePts) if (inside(box, p)) routes++;
+    return { side, collide, total: collide * 10 + routes * 25 + it.prefer.indexOf(side) * 30 };
+  };
+  const pick = (it: SideItem, others: Box[], stay?: Side) => {
+    const scored = it.prefer.map((side) => score(it, side, others));
+    let best = scored.reduce((a, b) => (b.total < a.total ? b : a));
+    const keep = stay ? scored.find((s) => s.side === stay) : undefined;
+    // Hysteresis: stay put unless that side now collides and a better one exists.
+    if (keep && keep.collide === 0 && keep.total <= best.total + 400) best = keep;
+    return best.side;
+  };
+
+  // 1) Greedy: higher priority first, each against the cards already placed.
+  const placed: Box[] = [];
+  for (const it of order) {
+    out[it.id] = pick(it, placed, prev[it.id]);
+    placed.push(it.boxes[out[it.id]]);
+  }
+  // 2) Refine: each card reconsiders against every other card, until nothing moves.
+  for (let round = 0; round < 4; round++) {
+    let moved = false;
+    for (const it of order) {
+      const others = order.filter((o) => o.id !== it.id).map((o) => o.boxes[out[o.id]]);
+      const side = pick(it, others, out[it.id]);
+      if (side !== out[it.id]) {
+        out[it.id] = side;
+        moved = true;
       }
-      if (!best || cost < best.cost) best = { box, side, cost };
-    });
-    const b = best!;
-    placed.push({ id: c.id, box: b.box, at: c.at, side: b.side, joint: stemJoint(b.box, b.side, c) });
+    }
+    if (!moved) break;
   }
-  return placed;
+  return out;
 }
 
-function stemJoint(box: Box, side: Side, c: CardInput): Pt {
-  if (c.kind === "property" && (side === "above" || side === "above-left" || side === "above-right")) {
-    // Stem goes straight up from the dot when the dot sits under the card.
-    const x = Math.min(Math.max(c.at.x, box.x + 12), box.x + box.w - 12);
-    return { x, y: box.y + box.h };
+/**
+ * Card box for a side, given the marker centre, the card size and how the
+ * card docks: `reach` is how far from the centre the card's near edge sits
+ * (negative tucks the card under the marker).
+ */
+export function dockedBox(at: Pt, w: number, h: number, side: Side, reach: number): Box {
+  switch (side) {
+    case "right": return { x: at.x + reach, y: at.y - h / 2, w, h };
+    case "left": return { x: at.x - reach - w, y: at.y - h / 2, w, h };
+    case "above": return { x: at.x - w / 2, y: at.y - reach - h, w, h };
+    case "below": return { x: at.x - w / 2, y: at.y + reach, w, h };
   }
-  return jointFor(box, side);
+}
+
+/** Sides ordered to face away from where routes come from (for place cards). */
+export function awayFrom(at: Pt, from?: Pt): Side[] {
+  if (!from) return [...SIDES];
+  const dx = at.x - from.x, dy = at.y - from.y;
+  const dir: Record<Side, Pt> = { right: { x: 1, y: 0 }, left: { x: -1, y: 0 }, above: { x: 0, y: -1 }, below: { x: 0, y: 1 } };
+  return [...SIDES].sort((a, b) => dir[b].x * dx + dir[b].y * dy - (dir[a].x * dx + dir[a].y * dy));
 }

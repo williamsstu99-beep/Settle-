@@ -1,4 +1,4 @@
-import type { LatLng, Mode, TransitStep } from "@/core/types";
+import type { LatLng, Leg, Mode, TransitStep } from "@/core/types";
 import { TtlCache } from "./cache";
 
 /**
@@ -14,13 +14,15 @@ const FIELD_MASK = "routes.duration,routes.distanceMeters,routes.polyline.encode
 const TRANSIT_FIELD_MASK =
   FIELD_MASK +
   ",routes.legs.steps.travelMode,routes.legs.steps.polyline.encodedPolyline" +
-  ",routes.legs.steps.transitDetails.transitLine.nameShort,routes.legs.steps.transitDetails.transitLine.name,routes.legs.steps.transitDetails.transitLine.vehicle.type";
+  ",routes.legs.steps.transitDetails.transitLine.nameShort,routes.legs.steps.transitDetails.transitLine.name,routes.legs.steps.transitDetails.transitLine.vehicle.type" +
+  ",routes.legs.steps.transitDetails.stopDetails.departureStop.name,routes.legs.steps.transitDetails.headway,routes.travelAdvisory.transitFare";
+const ELEVATION_ENDPOINT = "https://maps.googleapis.com/maps/api/elevation/json";
 const MATRIX_FIELD_MASK = "originIndex,destinationIndex,duration,distanceMeters,condition,status";
 
 const TRAVEL_MODE: Record<Mode, string> = { drive: "DRIVE", transit: "TRANSIT", bike: "BICYCLE", walk: "WALK" };
 
 export type RouteResult =
-  | { status: "ok"; minutes: number; meters: number; polyline: string; steps?: TransitStep[] }
+  | ({ status: "ok"; minutes: number; meters: number; polyline: string } & Pick<Leg, "steps" | "fare" | "peak" | "ascent">)
   | { status: "no_route" };
 
 const cache = new TtlCache<RouteResult>(3 * 24 * 3600 * 1000);
@@ -53,9 +55,27 @@ export function buildRequestBody(origin: LatLng, destination: LatLng, mode: Mode
 type ApiStep = {
   travelMode?: string;
   polyline?: { encodedPolyline?: string };
-  transitDetails?: { transitLine?: { nameShort?: string; name?: string; vehicle?: { type?: string } } };
+  transitDetails?: {
+    transitLine?: { nameShort?: string; name?: string; vehicle?: { type?: string } };
+    stopDetails?: { departureStop?: { name?: string } };
+    headway?: string;
+  };
 };
-type ApiRoute = { duration?: string; distanceMeters?: number; polyline?: { encodedPolyline?: string }; legs?: { steps?: ApiStep[] }[] };
+type Money = { currencyCode?: string; units?: string | number; nanos?: number };
+type ApiRoute = {
+  duration?: string;
+  distanceMeters?: number;
+  polyline?: { encodedPolyline?: string };
+  legs?: { steps?: ApiStep[] }[];
+  travelAdvisory?: { transitFare?: Money };
+};
+
+/** Google Money → number. Returns undefined for missing or zero fares (zero usually means "unknown"). */
+export function parseMoney(m?: Money): { amount: number; currency: string } | undefined {
+  if (!m?.currencyCode) return undefined;
+  const amount = Number(m.units ?? 0) + (m.nanos ?? 0) / 1e9;
+  return amount > 0 ? { amount: Math.round(amount * 100) / 100, currency: m.currencyCode } : undefined;
+}
 
 const toMinutes = (duration: string) => Math.max(1, Math.round(parseFloat(duration) / 60));
 
@@ -72,7 +92,15 @@ export function parseTransitSteps(route: ApiRoute): TransitStep[] | undefined {
     if (!poly) continue;
     if (s.travelMode === "TRANSIT") {
       const line = s.transitDetails?.transitLine;
-      out.push({ kind: "ride", polyline: poly, line: line?.nameShort || line?.name || undefined, vehicle: line?.vehicle?.type || undefined });
+      const headway = s.transitDetails?.headway ? Math.round(parseFloat(s.transitDetails.headway) / 60) : undefined;
+      out.push({
+        kind: "ride",
+        polyline: poly,
+        line: line?.nameShort || line?.name || undefined,
+        vehicle: line?.vehicle?.type || undefined,
+        from: s.transitDetails?.stopDetails?.departureStop?.name || undefined,
+        headwayMin: headway && headway > 0 && headway < 180 ? headway : undefined,
+      });
     } else {
       const prev = out[out.length - 1];
       if (prev?.kind === "walk") prev.polyline = joinPolylines(prev.polyline, poly);
@@ -121,7 +149,53 @@ export function parseResponse(json: unknown): RouteResult {
     meters: r.distanceMeters ?? 0,
     polyline: r.polyline?.encodedPolyline ?? "",
     steps: parseTransitSteps(r),
+    fare: parseMoney(r.travelAdvisory?.transitFare),
   };
+}
+
+/** Total climb in metres from a list of elevations. Small wobbles (< 1 m) are ignored. */
+export function totalAscent(elevations: number[]): number {
+  let up = 0;
+  for (let i = 1; i < elevations.length; i++) {
+    const d = elevations[i] - elevations[i - 1];
+    if (d > 1) up += d;
+  }
+  return Math.round(up);
+}
+
+/** Bike / walk: climb along the route from the Elevation API. Undefined if that API isn't enabled. */
+async function ascentFor(polyline: string, apiKey: string): Promise<number | undefined> {
+  if (!polyline) return undefined;
+  try {
+    const url = `${ELEVATION_ENDPOINT}?path=enc:${encodeURIComponent(polyline)}&samples=64&key=${encodeURIComponent(apiKey)}`;
+    const res = await fetch(url, { signal: AbortSignal.timeout(8000) });
+    const j = (await res.json()) as { status?: string; results?: { elevation?: number }[] };
+    if (j.status !== "OK" || !j.results?.length) return undefined;
+    return totalAscent(j.results.map((r) => r.elevation ?? 0));
+  } catch {
+    return undefined;
+  }
+}
+
+/** Drive: best and worst case at the peak departure (two extra duration-only requests). */
+async function peakRange(origin: LatLng, destination: LatLng, departure: Date, apiKey: string): Promise<[number, number] | undefined> {
+  try {
+    const one = async (trafficModel: "OPTIMISTIC" | "PESSIMISTIC") => {
+      const res = await fetch(ENDPOINT, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "X-Goog-Api-Key": apiKey, "X-Goog-FieldMask": "routes.duration" },
+        body: JSON.stringify({ origin: point(origin), destination: point(destination), travelMode: "DRIVE", routingPreference: "TRAFFIC_AWARE_OPTIMAL", trafficModel, departureTime: departure.toISOString() }),
+        signal: AbortSignal.timeout(8000),
+      });
+      if (!res.ok) return undefined;
+      const d = ((await res.json()) as { routes?: { duration?: string }[] }).routes?.[0]?.duration;
+      return d ? toMinutes(d) : undefined;
+    };
+    const [lo, hi] = await Promise.all([one("OPTIMISTIC"), one("PESSIMISTIC")]);
+    return lo != null && hi != null ? [Math.min(lo, hi), Math.max(lo, hi)] : undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 async function googleError(res: Response): Promise<RoutesApiError> {
@@ -171,6 +245,11 @@ export async function computeRoute(
     throw err;
   }
   const result = parseResponse(await res.json());
+  if (result.status === "ok") {
+    // Extras for the place cards; each is optional and never fails the route.
+    if (mode === "drive") result.peak = await peakRange(origin, destination, departure, apiKey);
+    if (mode === "bike" || mode === "walk") result.ascent = await ascentFor(result.polyline, apiKey);
+  }
   cache.set(key, result);
   if (result.status === "ok") timeCache.set(key, { status: "ok", minutes: result.minutes, meters: result.meters });
   return result;

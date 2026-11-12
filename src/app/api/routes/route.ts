@@ -47,7 +47,7 @@ export async function POST(request: Request) {
     const legs: Leg[] = await mapLimit(body.pairs, 6, async (p) => {
       const r = await computeRoute(p.origin, p.destination, p.mode, departure, apiKey);
       return r.status === "ok"
-        ? { optionId: p.optionId, anchorId: p.anchorId, mode: p.mode, status: "ok", minutes: r.minutes, meters: r.meters, polyline: r.polyline, steps: r.steps }
+        ? { optionId: p.optionId, anchorId: p.anchorId, mode: p.mode, status: "ok", minutes: r.minutes, meters: r.meters, polyline: r.polyline, steps: r.steps, fare: r.fare, peak: r.peak, ascent: r.ascent }
         : { optionId: p.optionId, anchorId: p.anchorId, mode: p.mode, status: "no_route" };
     });
     return Response.json({ departure: departure.toISOString(), legs });

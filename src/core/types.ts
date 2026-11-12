@@ -68,6 +68,12 @@ export type Leg = {
   polyline?: string;
   /** Transit only: the route split into walking and riding parts. */
   steps?: TransitStep[];
+  /** Transit only: one-way fare, when Google returns one. Never estimated. */
+  fare?: { amount: number; currency: string };
+  /** Drive only: optimistic–pessimistic minutes at the peak departure. */
+  peak?: [number, number];
+  /** Bike / walk only: total climb along the route, in metres. */
+  ascent?: number;
 };
 
 export type TransitStep = {
@@ -76,6 +82,10 @@ export type TransitStep = {
   /** Short line name for rides, e.g. "25B" or "Western Line". */
   line?: string;
   vehicle?: string; // e.g. BUS, HEAVY_RAIL, FERRY
+  /** Rides: the stop you board at (for "1 change at …"). */
+  from?: string;
+  /** Rides: minutes between services, when Google gives it. */
+  headwayMin?: number;
 };
 
 /** A travel time without geometry, from the batch (matrix) request. */

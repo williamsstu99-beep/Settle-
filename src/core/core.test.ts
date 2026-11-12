@@ -191,19 +191,20 @@ describe("share links keep mode choices", () => {
   });
 });
 
-import { ANCHOR_COLORS, anchorColor, nextAnchorColor } from "./plan";
+import { ANCHOR_PALETTE, anchorColor, letterOf, nextAnchorColor } from "./plan";
 import { safePhoto } from "./sources/trademe";
 
 describe("place colours", () => {
-  it("assigns the next unused colour and keeps existing ones", () => {
-    expect(nextAnchorColor([])).toBe(ANCHOR_COLORS[0]);
-    expect(nextAnchorColor([{ color: ANCHOR_COLORS[0] }, { color: ANCHOR_COLORS[2] }])).toBe(ANCHOR_COLORS[1]);
-    expect(anchorColor({ color: "#123456" }, 5)).toBe("#123456");
-    expect(anchorColor({}, 1)).toBe(ANCHOR_COLORS[1]);
+  it("assigns the next unused swatch and never repeats one while it's in use", () => {
+    expect(nextAnchorColor([])).toBe("sky");
+    expect(nextAnchorColor([{ color: "sky" }, { color: "rose" }])).toBe("peach");
+    expect(anchorColor({ color: "sage" }, 0).route).toBe("#6FB28E");
+    expect(anchorColor({ color: "#2F5FB3" }, 1).id).toBe("peach"); // older saved plans fall back by position
   });
-  it("gives places from a share link their colours by position", () => {
+  it("gives places from a share link swatches by position, and letters homes A, B, C", () => {
     const back = decodePlan(encodePlan(EXAMPLE_PLAN))!;
-    expect(back.anchors.map((a) => a.color)).toEqual(ANCHOR_COLORS.slice(0, 3));
+    expect(back.anchors.map((a) => a.color)).toEqual(ANCHOR_PALETTE.slice(0, 3).map((c) => c.id));
+    expect([0, 1, 2].map(letterOf)).toEqual(["A", "B", "C"]);
   });
 });
 
