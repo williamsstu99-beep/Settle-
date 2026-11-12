@@ -55,6 +55,12 @@ export type Option = {
   propertyType?: string;
   /** Listing photo URL, when the source has one. */
   photo?: string;
+  /** Full address, when picked from search. */
+  address?: string;
+  /** Any listing link the user pasted (TradeMe, Facebook, an agency…). */
+  link?: string;
+  /** Photos the user added (downscaled data URLs). Kept on this device only, never in share links. */
+  photos?: string[];
 };
 
 export type Leg = {

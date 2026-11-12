@@ -1,3 +1,4 @@
+import { safeLink } from "./home";
 import type { Anchor, Mode, Option } from "./types";
 
 /** What a user is working on: their places and the homes they're weighing up. */
@@ -94,7 +95,7 @@ export function encodePlan(plan: Plan): string {
       const oi = plan.options.findIndex((o) => o.id === oid), ai = plan.anchors.findIndex((a) => a.id === aid);
       return oi >= 0 && ai >= 0 ? [[oi, ai, mode]] : [];
     }),
-    o: plan.options.map((o) => [o.title, o.subtitle ?? "", r5(o.location.lat), r5(o.location.lng), o.price ? [o.price.amount, o.price.period, o.price.currency] : 0, o.bedrooms ?? 0, o.propertyType ?? "", o.source.kind === "trademe" ? o.source.listingId : ""]),
+    o: plan.options.map((o) => [o.title, o.subtitle ?? "", r5(o.location.lat), r5(o.location.lng), o.price ? [o.price.amount, o.price.period, o.price.currency] : 0, o.bedrooms ?? 0, o.propertyType ?? "", o.source.kind === "trademe" ? o.source.listingId : "", o.bathrooms ?? 0, o.link ?? ""]),
   };
   return toB64Url(JSON.stringify(slim));
 }
@@ -116,7 +117,7 @@ export function decodePlan(s: string): Plan | null {
       if (!Array.isArray(o) || !num(o[2], -90, 90) || !num(o[3], -180, 180)) return [];
       const p = Array.isArray(o[4]) && num(o[4][0], 0, 1e9) ? { amount: o[4][0] as number, period: (["week", "month", "once"].includes(o[4][1] as string) ? o[4][1] : "week") as "week", currency: /^[A-Z]{3}$/.test(String(o[4][2])) ? String(o[4][2]) : "NZD" } : undefined;
       const tm = str(o[7], 20);
-      return [{ id: newId(), title: str(o[0], 80) || "Home", subtitle: str(o[1], 80) || undefined, location: { lat: o[2] as number, lng: o[3] as number }, price: p, bedrooms: num(o[5], 1, 50) ? (o[5] as number) : undefined, propertyType: str(o[6], 30) || undefined, source: /^\d{6,}$/.test(tm) ? { kind: "trademe", listingId: tm, url: `https://www.trademe.co.nz/a/listing/${tm}` } : { kind: "manual" } }];
+      return [{ id: newId(), title: str(o[0], 80) || "Home", subtitle: str(o[1], 80) || undefined, location: { lat: o[2] as number, lng: o[3] as number }, price: p, bedrooms: num(o[5], 1, 50) ? (o[5] as number) : undefined, propertyType: str(o[6], 30) || undefined, bathrooms: num(o[8], 1, 20) ? (o[8] as number) : undefined, link: safeLink(str(o[9], 500)), source: /^\d{6,}$/.test(tm) ? { kind: "trademe", listingId: tm, url: `https://www.trademe.co.nz/a/listing/${tm}` } : { kind: "manual" } }];
     });
     const overrides: Record<string, Mode> = {};
     for (const m of raw.m ?? []) {

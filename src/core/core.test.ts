@@ -233,3 +233,32 @@ describe("driving by default", () => {
     expect(EXAMPLE_PLAN.anchors.every((a) => a.mode === "drive")).toBe(true);
   });
 });
+
+import { areaOf, homeFacts, listingUrl, photosOf, safeLink, wholeNumber } from "./home";
+
+describe("property details", () => {
+  it("fills the suburb and city from an address", () => {
+    expect(areaOf("12 Valley Road, Mount Eden, Auckland 1024, New Zealand")).toBe("Mount Eden, Auckland");
+    expect(areaOf("Mount Eden, Auckland, New Zealand")).toBe("Mount Eden, Auckland");
+    expect(areaOf("Parnell, Auckland 1052, New Zealand")).toBe("Parnell, Auckland");
+    expect(areaOf(undefined)).toBeUndefined();
+  });
+  it("keeps only web links", () => {
+    expect(safeLink("trademe.co.nz/a/listing/123")).toBe("https://trademe.co.nz/a/listing/123");
+    expect(safeLink("javascript:alert(1)")).toBeUndefined();
+    expect(safeLink("  ")).toBeUndefined();
+  });
+  it("prefers your link and your photos", () => {
+    const o = { id: "x", title: "T", location: { lat: 0, lng: 0 }, source: { kind: "trademe" as const, listingId: "1234567", url: "https://www.trademe.co.nz/a/listing/1234567" }, photo: "tm.jpg" };
+    expect(listingUrl(o)).toContain("trademe");
+    expect(listingUrl({ ...o, link: "https://fb.com/x" })).toBe("https://fb.com/x");
+    expect(photosOf({ ...o, photos: ["a", "b"] })).toEqual(["a", "b", "tm.jpg"]);
+    expect(homeFacts({ ...o, bedrooms: 2, bathrooms: 1 }, "$650/wk")).toBe("$650/wk · 2 bed · 1 bath");
+  });
+  it("reads numbers from form fields", () => {
+    expect(wholeNumber("$650", 100000)).toBe(650);
+    expect(wholeNumber("1,200", 100000)).toBe(1200);
+    expect(wholeNumber("two", 50)).toBeUndefined();
+    expect(wholeNumber("0", 50)).toBeUndefined();
+  });
+});
