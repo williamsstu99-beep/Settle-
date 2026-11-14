@@ -5,7 +5,7 @@ Compare homes by how they fit your life. Add the places that matter (work, the g
 ## Pages
 
 - **`/`**: the landing page (`src/app/page.tsx`, styles in `src/app/landing.css`). The hero shows an animated illustration until you add a real screenshot at `public/landing/hero.png` (about 1200 × 1040, a listing with photos looks best); it switches automatically on the next build.
-- **`/compare`**: the app. It starts empty with a two-step setup: add your places (as many as you like, then Next), then your properties (then Show on the map). `/compare?example=1` opens the example plan without replacing your own.
+- **`/compare`**: the app. It starts empty with a two-step setup: add the places that matter to you ("Add anchor", as many as you like, then Next), then your properties (then Show on the map). `/compare?example=1` opens the example plan without replacing your own.
 
 The logo is `src/components/Logo.tsx` (the route "S"); the favicon is `src/app/icon.svg`.
 
