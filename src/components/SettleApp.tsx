@@ -126,6 +126,9 @@ export default function SettleApp() {
   const [hoverStop, setHoverStop] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const [fitKey, setFitKey] = useState("init");
+  /** The one trip whose other ways to travel are showing (its times load only then, to save Google calls). */
+  const [modesOpen, setModesOpen] = useState<{ optionId: string; key: string } | null>(null);
+  const sideScroll = useRef<HTMLDivElement>(null);
 
   const { anchors, options } = plan;
   const overrides = useMemo(() => plan.overrides ?? {}, [plan.overrides]);
@@ -159,8 +162,9 @@ export default function SettleApp() {
   // asked for the selected home and only for modes that aren't known yet. Cached per pair.
   // Trips from the same origin go in one matrix request (home → its trips, or a stop → the next).
   const timesWanted = useMemo(() => {
-    const ts = selected ? trips.get(selected) : undefined;
-    if (!ts?.length || seq || !hasMapsKey) return null; // not while Compare steps through every home
+    // Only the trip whose modes you opened, and never while Compare steps through every home.
+    const ts = selected && modesOpen?.optionId === selected ? trips.get(selected)?.filter((t) => pairKey(t.from, t.to) === modesOpen.key) : undefined;
+    if (!ts?.length || seq || !hasMapsKey) return null;
     const groups = new Map<string, { origin: Trip["origin"]; dests: Trip[] }>();
     for (const t of ts) {
       const g = groups.get(t.from) ?? { origin: t.origin, dests: [] };
@@ -175,7 +179,7 @@ export default function SettleApp() {
       if (modes.length) return { from, origin: g.origin, dests, modes };
     }
     return null;
-  }, [selected, seq, trips, overrides, legs, times]);
+  }, [selected, seq, trips, overrides, legs, times, modesOpen]);
   const timesInflight = useRef(false);
   useEffect(() => {
     if (!timesWanted || timesInflight.current) return;
@@ -478,6 +482,19 @@ export default function SettleApp() {
     setPending(null);
     setSelectedState(null);
   };
+  /** The way out: back to the overview of every home and anchor, with nothing open. */
+  const overview = () => {
+    deselect();
+    setCollapsed(false);
+    setEdit(null);
+    setAdding(false);
+    setHomeForm(options.length ? "closed" : null);
+    setAlong(null);
+    setModesOpen(null);
+    setFitKey(newId());
+    sideScroll.current?.scrollTo({ top: 0, behavior: reduceMotion ? "auto" : "smooth" });
+    if (mobile) window.scrollTo({ top: 0, behavior: reduceMotion ? "auto" : "smooth" });
+  };
   // Clicking empty map deselects (cards and markers stop their clicks reaching the map).
   const onMapClick = (p: LatLng) => {
     if (adding) addAnchorAt(p);
@@ -529,7 +546,7 @@ export default function SettleApp() {
         className={`mode${on ? " on" : ""}${walkable ? " walkable" : ""}${loading ? " loading" : ""}`}
         aria-pressed={on}
         disabled={mins === null && !on}
-        onClick={() => chooseMode(l, m)}
+        onClick={() => { chooseMode(l, m); setModesOpen(null); }}
         title={mins === null ? `No ${MODE_LABEL[m].toLowerCase()} route` : walkable ? "Walkable: 15 min or less on foot" : m === l.defaultMode ? "Usual way for this trip" : undefined}
       >
         <span className="mode-l">{MODE_LABEL[m]}</span>
@@ -609,7 +626,21 @@ export default function SettleApp() {
           {l.overridden && <button className="link" onClick={() => chooseMode(l, l.defaultMode)}>Reset</button>}
           <span className="leg-t">{typeof l.minutes === "number" ? `${l.minutes} min` : l.minutes === null ? "No route" : "…"}</span>
         </div>
-        <div className="modes" role="group" aria-label={`How you get ${day ? `from ${l.prev?.name ?? "home"} ` : ""}to ${l.anchor.name}`}>{MODES.map((m) => modeButton(r, l, m))}</div>
+        {(() => {
+          const open = modesOpen?.optionId === r.option.id && modesOpen.key === k;
+          const how = `How you get ${day ? `from ${l.prev?.name ?? "home"} ` : ""}to ${l.anchor.name}`;
+          return (
+            <>
+              <button className={`modepick${open ? " open" : ""}`} aria-expanded={open} aria-label={`${how}: ${MODE_LABEL[l.mode]}. ${open ? "Hide" : "Show"} other ways`} onClick={() => setModesOpen(open ? null : { optionId: r.option.id, key: k })}>
+                <Icon name={l.mode} size={14} />
+                <span>{MODE_LABEL[l.mode]}</span>
+                {!open && l.walkable && <span className="mp-hint">Walkable</span>}
+                <Icon name="chev" size={13} className="mp-chev" />
+              </button>
+              {open && <div className="modes" role="group" aria-label={how}>{MODES.map((m) => modeButton(r, l, m))}</div>}
+            </>
+          );
+        })()}
         {legErrors[k] && <p className="err">{legErrors[k]}</p>}
       </div>
     );
@@ -810,16 +841,16 @@ export default function SettleApp() {
         <div className="head">
           <h1 className="brand"><Link href="/" aria-label="Settle home"><Wordmark size={22} mark={28} /></Link></h1>
           <div className="head-actions">
+            <button className="btn iconbtn" onClick={overview} aria-label="Back to the overview" title="Overview: every home and anchor">
+              <Icon name="house2" size={16} />
+            </button>
             <button className={`btn${running ? "" : " dark"}`} onClick={running ? skip : startCompare} disabled={!options.length || !anchors.length}>
               {running ? "Skip" : hasRun ? "Replay" : "Compare"}
             </button>
             <button className="btn" onClick={share} disabled={!options.length && !anchors.length}>{copied ? "Copied" : "Share"}</button>
-            <button className="btn iconbtn" onClick={toggleView} aria-label={mobile ? "Switch to the desktop view" : "Switch to the mobile view"} title={mobile ? "Desktop view" : "Mobile view"}>
-              <Icon name={mobile ? "desktop" : "phone"} size={16} />
-            </button>
           </div>
         </div>
-        <div className="side-scroll">
+        <div className="side-scroll" ref={sideScroll}>
           {plan.example && (
             <div className="banner">
               <span><b>This is an example.</b> Have a look around, then start your own.</span>
@@ -899,6 +930,9 @@ export default function SettleApp() {
               <span aria-hidden="true" />
               {mobile ? "Step through" : "Step through routes"}
             </label>
+            <button className="viewbtn" onClick={toggleView} aria-label={mobile ? "Switch to the desktop view" : "Switch to the mobile view"} title={mobile ? "Desktop view" : "Mobile view"}>
+              <Icon name={mobile ? "desktop" : "phone"} size={15} />
+            </button>
             <button className="fitbtn" onClick={() => setFitKey(newId())} aria-label="Show every home, place and route">
               <Icon name="expand" size={15} />{mobile ? "All" : "Show all"}
             </button>

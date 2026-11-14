@@ -116,3 +116,14 @@ export function moveTo(ids: string[], id: string, index: number): string[] {
   const i = Math.max(0, Math.min(rest.length, index));
   return [...rest.slice(0, i), id, ...rest.slice(i)];
 }
+
+/**
+ * The order to show while a drag is live: the dragged order, minus anything
+ * that's gone, plus anything added since the drag began (on the end). So a list
+ * never hides an anchor, even if a drag was left hanging.
+ */
+export function liveOrder(dragged: string[], ids: string[]): string[] {
+  const now = new Set(ids);
+  const kept = dragged.filter((id) => now.has(id));
+  return [...kept, ...ids.filter((id) => !kept.includes(id))];
+}
