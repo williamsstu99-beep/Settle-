@@ -1,3 +1,4 @@
+import { HOME_COLOR, MAX_DAYS, newDayName, type Day } from "./day";
 import { safeLink } from "./home";
 import type { Anchor, Mode, Option } from "./types";
 
@@ -9,8 +10,15 @@ export type Plan = {
   driveDefault?: boolean;
   /** Mode choices for individual home → place routes, keyed `${optionId}|${anchorId}`. */
   overrides?: Record<string, Mode>;
+  /** Saved days: life anchors in visiting order, routed as one trip. */
+  days?: Day[];
+  /** The day being shown. None = every anchor is its own trip from home. */
+  dayId?: string | null;
   example?: boolean;
 };
+
+/** The day being shown, if any. */
+export const activeDay = (p: Pick<Plan, "days" | "dayId">): Day | null => p.days?.find((d) => d.id === p.dayId) ?? null;
 
 export const MAX_OPTIONS = 6;
 export const MAX_ANCHORS = 5; // one per place colour, so no two places ever share a colour
@@ -33,9 +41,12 @@ export function nextAnchorColor(anchors: { color?: string }[]): string {
   return (ANCHOR_PALETTE.find((c) => !used.has(c.id)) ?? ANCHOR_PALETTE[anchors.length % ANCHOR_PALETTE.length]).id;
 }
 
+/** The trip back home: ink, like the logo's home dot. */
+export const HOME_SWATCH: Swatch = { id: HOME_COLOR, tab: "#E6E8EC", text: "#2C3038", route: "#5B6270", marker: "#2C3038" };
+
 /** A place's swatch. Plans saved before swatches existed fall back to the place's position. */
 export const anchorColor = (a: { color?: string }, index: number): Swatch =>
-  ANCHOR_PALETTE.find((c) => c.id === a.color) ?? ANCHOR_PALETTE[index % ANCHOR_PALETTE.length];
+  a.color === HOME_COLOR ? HOME_SWATCH : ANCHOR_PALETTE.find((c) => c.id === a.color) ?? ANCHOR_PALETTE[Math.max(0, index) % ANCHOR_PALETTE.length];
 
 /** Letters for homes, matching the panel and the map: A, B, C… */
 export const letterOf = (index: number) => String.fromCharCode(65 + (index % 26));
@@ -87,6 +98,9 @@ const fromB64Url = (s: string) => {
 
 const r5 = (n: number) => Math.round(n * 1e5) / 1e5;
 
+/** Anchor ids → positions, for share links. */
+const idx = (plan: Plan, ids: string[]) => ids.map((id) => plan.anchors.findIndex((a) => a.id === id)).filter((i) => i >= 0);
+
 export function encodePlan(plan: Plan): string {
   const slim = {
     a: plan.anchors.map((a) => [a.name, a.icon, r5(a.location.lat), r5(a.location.lng), a.mode, a.address ?? ""]),
@@ -95,6 +109,8 @@ export function encodePlan(plan: Plan): string {
       const oi = plan.options.findIndex((o) => o.id === oid), ai = plan.anchors.findIndex((a) => a.id === aid);
       return oi >= 0 && ai >= 0 ? [[oi, ai, mode]] : [];
     }),
+    d: (plan.days ?? []).map((d) => [d.name, idx(plan, d.order), idx(plan, d.skip), d.home ? 1 : 0]),
+    di: (plan.days ?? []).findIndex((d) => d.id === plan.dayId),
     o: plan.options.map((o) => [o.title, o.subtitle ?? "", r5(o.location.lat), r5(o.location.lng), o.price ? [o.price.amount, o.price.period, o.price.currency] : 0, o.bedrooms ?? 0, o.propertyType ?? "", o.source.kind === "trademe" ? o.source.listingId : "", o.bathrooms ?? 0, o.link ?? ""]),
   };
   return toB64Url(JSON.stringify(slim));
@@ -108,7 +124,7 @@ const str = (v: unknown, max = 120) => (typeof v === "string" ? v.slice(0, max) 
 /** Decode a share link. Anything malformed is dropped rather than trusted. */
 export function decodePlan(s: string): Plan | null {
   try {
-    const raw = JSON.parse(fromB64Url(s)) as { a?: unknown[][]; o?: unknown[][]; m?: unknown[][] };
+    const raw = JSON.parse(fromB64Url(s)) as { a?: unknown[][]; o?: unknown[][]; m?: unknown[][]; d?: unknown[][]; di?: unknown };
     const anchors = (raw.a ?? []).slice(0, MAX_ANCHORS).flatMap((a, i): Plan["anchors"] => {
       if (!Array.isArray(a) || !num(a[2], -90, 90) || !num(a[3], -180, 180)) return [];
       return [{ id: newId(), name: str(a[0], 40) || "Place", icon: (ICONS.has(a[1] as string) ? a[1] : "other") as Plan["anchors"][number]["icon"], location: { lat: a[2] as number, lng: a[3] as number }, mode: (MODES.has(a[4] as string) ? a[4] : "drive") as Plan["anchors"][number]["mode"], address: str(a[5]) || undefined, color: ANCHOR_PALETTE[i % ANCHOR_PALETTE.length].id }];
@@ -125,7 +141,14 @@ export function decodePlan(s: string): Plan | null {
       const o = options[m[0] as number], a = anchors[m[1] as number];
       if (o && a && a.mode !== m[2]) overrides[`${o.id}|${a.id}`] = m[2] as Mode;
     }
-    return { anchors, options, overrides, driveDefault: true };
+    const ids = (v: unknown) => (Array.isArray(v) ? [...new Set(v)].flatMap((i) => (typeof i === "number" && anchors[i] ? [anchors[i].id] : [])) : []);
+    const days: Day[] = [];
+    for (const d of (Array.isArray(raw.d) ? raw.d : []).slice(0, MAX_DAYS)) {
+      if (!Array.isArray(d)) continue;
+      days.push({ id: newId(), name: str(d[0], 30) || newDayName(days), order: ids(d[1]), skip: ids(d[2]), home: d[3] === 1 });
+    }
+    const dayId = typeof raw.di === "number" ? days[raw.di]?.id ?? null : null;
+    return { anchors, options, overrides, driveDefault: true, ...(days.length ? { days, dayId } : {}) };
   } catch {
     return null;
   }

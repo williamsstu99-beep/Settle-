@@ -2,7 +2,7 @@
 
 import { Map as GoogleMap, useMap } from "@vis.gl/react-google-maps";
 import { memo, useEffect, useMemo, useRef, useState } from "react";
-import { effectiveMode, formatPrice, legKey, type OptionSummary, type Overrides } from "@/core/compare";
+import { formatPrice, legKey, type OptionSummary } from "@/core/compare";
 import { fareLine, modeDetail, rankBadge, suburbOf } from "@/core/describe";
 import { awayFrom, chooseSides, dockedBox, SIDES, type Pt, type Side, type SideItem } from "@/core/layout";
 import { anchorColor, letterOf, type Swatch } from "@/core/plan";
@@ -40,8 +40,6 @@ type Props = {
   anchors: Anchor[];
   options: Option[];
   rows: OptionSummary[];
-  overrides: Overrides;
-  legs: Map<string, Leg>;
   selected: string | null;
   /** Bumped by Compare / Replay so the selected home's routes redraw even if it's unchanged. */
   epoch: number;
@@ -260,42 +258,44 @@ const PlaceMarker = memo(function PlaceMarker({ a, sw, side, view, badge, countK
 
 export default function MapView(p: Props) {
   const map = useMap();
-  const { options, anchors, legs, overrides, selected, rows } = p;
+  const { options, anchors, selected, rows } = p;
   const sel = options.find((o) => o.id === selected);
   const zoom = useSettledZoom();
 
-  // Every home's routes (grey) and the selected home's in place colours. Each route
-  // starts exactly at its home's location (the hub) and ends at the place's marker.
+  // Every home's routes (grey) and the selected home's in place colours. Each route starts
+  // exactly at its origin (the home's hub, or the previous stop of your day) and ends at the next.
+  // Stop → stop trips are the same for every home, so only the selected (or first) home draws them.
   const routes = useMemo(
     () =>
-      options.flatMap((o) =>
-        anchors.flatMap((a, ai) => {
-          const mode = effectiveMode(overrides, o.id, a);
-          const leg = legs.get(legKey(o.id, a.id, mode));
+      rows.flatMap((r, ri) =>
+        r.legs.flatMap((l, li) => {
+          const isSel = r.option.id === selected;
+          if (l.shared && !(isSel || (!selected && ri === 0))) return [];
+          const leg = l.leg;
           if (leg?.status !== "ok" || !leg.polyline) return [];
+          const mode = l.mode;
           const steps = leg.steps?.map((s) => ({ ...s, path: decodePolyline(s.polyline) })).filter((s) => s.path.length > 1);
           const pieces = steps?.length ? steps.map((s) => ({ path: s.path, dashed: s.kind === "walk" })) : [{ path: decodePolyline(leg.polyline), dashed: mode === "walk" }];
-          pieces[0] = { ...pieces[0], path: [o.location, ...pieces[0].path] };
+          pieces[0] = { ...pieces[0], path: [l.origin, ...pieces[0].path] };
           const last = pieces.length - 1;
-          pieces[last] = { ...pieces[last], path: [...pieces[last].path, a.location] };
-          const isSel = o.id === selected;
+          pieces[last] = { ...pieces[last], path: [...pieces[last].path, l.destination] };
           const stepIn = isSel && p.stepped && !p.instant;
           const rides = isSel ? (steps ?? []).filter((s) => s.kind === "ride" && s.line).map((s) => ({ line: s.line!, vehicle: s.vehicle, at: midpoint(s.path)! })) : [];
           return [{
-            key: `${isSel ? p.epoch : 0}:${legKey(o.id, a.id, mode)}`,
-            pair: `${o.id}|${a.id}`,
-            optionId: o.id,
-            color: anchorColor(a, ai).route,
+            key: `${isSel ? p.epoch : 0}:${l.shared ? "" : r.option.id}:${legKey(l.from, l.to, mode)}`,
+            pair: `${l.from}|${l.to}`,
+            optionId: r.option.id,
+            color: anchorColor(l.anchor, anchors.indexOf(l.anchor)).route,
             parts: pieces.map((x) => ({ m: measure(x.path), dashed: x.dashed })),
             selected: isSel,
-            delay: stepIn ? ai * STEP_GAP : 0,
+            delay: stepIn ? li * STEP_GAP : 0,
             drawMs: stepIn ? STEP_DRAW : DRAW_MS,
             rides,
             pts: isSel ? pieces.flatMap((x) => x.path.filter((_, i) => i % 2 === 0)) : [],
           }];
         }),
       ),
-    [options, anchors, legs, overrides, selected, p.epoch, p.stepped, p.instant],
+    [rows, anchors, selected, p.epoch, p.stepped, p.instant],
   );
   const drawRoutes: DrawRoute[] = useMemo(() => routes.map(({ key, optionId, color, parts, selected: s, delay, drawMs }) => ({ key, optionId, color, parts, selected: s, delay, drawMs })), [routes]);
 
@@ -388,7 +388,9 @@ export default function MapView(p: Props) {
       ))}
 
       {anchors.map((a, ai) => {
-        const l = selRow?.legs[ai];
+        // The trip that arrives here: from home, or from the previous stop of your day.
+        const li = selRow ? selRow.legs.findIndex((x) => x.to === a.id) : -1;
+        const l = li >= 0 ? selRow!.legs[li] : undefined;
         return (
           <HtmlMarker key={a.id} position={a.location} zIndex={20}>
             <PlaceMarker
@@ -396,10 +398,10 @@ export default function MapView(p: Props) {
               sw={anchorColor(a, ai)}
               side={sides[`a:${a.id}`] ?? "right"}
               view={l ? { minutes: l.minutes, mode: l.mode, leg: l.leg } : undefined}
-              badge={selected ? rankBadge(rows, ai, selected) : null}
+              badge={selected && l && !l.shared ? rankBadge(rows, li, selected) : null}
               countKey={`${growKey}:${l?.mode}:${l?.minutes}`}
               instant={p.instant}
-              delay={p.stepped && !p.instant ? ai * STEP_GAP : 0}
+              delay={p.stepped && !p.instant ? Math.max(0, li) * STEP_GAP : 0}
               drawMs={p.stepped && !p.instant ? STEP_DRAW : DRAW_MS}
               onClick={p.onAnchorClick}
             />

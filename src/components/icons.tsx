@@ -27,6 +27,7 @@ const P = {
   back: <path d="M13 8H3M7 4 3 8l4 4" />,
   arrow: <path d="M3 8h10M9 4l4 4-4 4" />,
   chev: <path d="M4 6l4 4 4-4" />,
+  grip: <path d="M6 4h.01M10 4h.01M6 8h.01M10 8h.01M6 12h.01M10 12h.01" strokeWidth={2.4} />,
   clock: <><circle cx="8" cy="8" r="5.8" /><path d="M8 5v3.2l2 1.3" /></>,
   search: <><circle cx="7" cy="7" r="4.5" /><path d="m10.5 10.5 3 3" /></>,
   link: <path d="M6.5 9.5l3-3M7 4.5l1-1a2.8 2.8 0 0 1 4 4l-1 1M9 11.5l-1 1a2.8 2.8 0 0 1-4-4l1-1" />,
