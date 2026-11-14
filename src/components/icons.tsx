@@ -31,6 +31,8 @@ const P = {
   search: <><circle cx="7" cy="7" r="4.5" /><path d="m10.5 10.5 3 3" /></>,
   link: <path d="M6.5 9.5l3-3M7 4.5l1-1a2.8 2.8 0 0 1 4 4l-1 1M9 11.5l-1 1a2.8 2.8 0 0 1-4-4l1-1" />,
   share: <><circle cx="12" cy="3.5" r="1.8" /><circle cx="4" cy="8" r="1.8" /><circle cx="12" cy="12.5" r="1.8" /><path d="m5.6 7.1 4.8-2.7M5.6 8.9l4.8 2.7" /></>,
+  phone: <><rect x="4.5" y="1.5" width="7" height="13" rx="1.6" /><path d="M7 12.2h2" /></>,
+  desktop: <><rect x="1.5" y="2.5" width="13" height="8.5" rx="1.2" /><path d="M6 14h4M8 11v3" /></>,
   logo: <><path d="M2.5 7.5 8 3l5.5 4.5V13h-11z" /><circle cx="8" cy="9.4" r="1.6" /></>,
 } as const;
 
