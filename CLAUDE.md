@@ -36,7 +36,8 @@ Settle helps people pick a home by how it fits their life. Users add **life anch
   - The zoom fits all homes, anchors and routes.
 - **Compare** steps from most to least travel and ends on the best home. "Step through routes" reveals one anchor at a time (toggle, default on). Reduced motion skips animation.
 - **Facebook Marketplace/groups:** no API and scraping is off the table. Parked idea: "paste a listing" with AI extraction.
-- Parked: multi-stop "My day" planner, an "Optimise" fastest-mode option, accounts, and `vehicleStopover` on drive waypoints (stops postcode pins snapping onto motorways).
+- **Budget:** Google spend is capped at **US$50/month** beyond the free allowances. Weigh every new API call against it.
+- Next up, open decisions and parked ideas live in **`BACKLOG.md`**.
 
 ## Design rules (from the owner's feedback)
 - Light, calm, professional. No neon, no dark-heavy UI, no gradient washes, no emoji.
@@ -50,5 +51,6 @@ Settle helps people pick a home by how it fits their life. Users add **life anch
 - Run `npm test`, `npm run lint` and `npm run build` before committing; all must pass. Put new logic in `src/core` with tests.
 - Never call real Google from tests. UI checks use a Playwright rig with stubbed Google Maps and mocked `/api/*`, kept out of the repo.
 - Copy is plain English and NZ spelling, with user-facing words: "life anchors", "properties", "homes". Google errors go through `explainError`.
+- **Update `BACKLOG.md` in every PR:** move items to Done, add anything new that's parked or decided.
 - One branch and PR per change set (`claude/<topic>`). Don't force-push; start a new branch. Use the attribution trailers in commits.
 - Never put API keys in code, commits or chat. Keep the README's cost section and code map in sync with changes.
