@@ -468,3 +468,11 @@ button:disabled { cursor: not-allowed; }
 .ob-foot > span { font-size: 12.5px; color: var(--muted); }
 .ob-foot .btn { padding: 9px 16px; }
 .ob-foot .link { display: inline-flex; align-items: center; gap: 5px; }
+
+/* the selected home's trip back from the day's last stop */
+.pc-back { display: flex; align-items: center; gap: 6px; margin-top: 4px; padding-top: 6px; border-top: 1px solid rgba(255, 255, 255, 0.12); font-size: 11.5px; color: #C9D0D6; }
+.pc-back span { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pc-back b { color: #fff; font-size: 12.5px; font-weight: 700; white-space: nowrap; }
+.mo-back { display: flex; align-items: center; gap: 6px; margin-top: 3px; font-size: 11.5px; color: var(--muted); }
+.mo-back span { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mo-back b { color: var(--fg); font-size: 12.5px; white-space: nowrap; }

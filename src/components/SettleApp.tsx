@@ -737,7 +737,7 @@ export default function SettleApp() {
           <span className="bar" aria-hidden="true" />
           <span className="t">
             <b>{n != null && <span className="stopn">{n}</span>}{a.name}</b>
-            <span>{day && day.skip.includes(a.id) ? `Own trip from home · ${MODE_LABEL[a.mode].toLowerCase()}` : `${MODE_LABEL[a.mode]} by default`}</span>
+            <span>{day && day.skip.includes(a.id) ? "Not in this day" : `${MODE_LABEL[a.mode]} by default`}</span>
           </span>
           <Icon name="chev" size={14} className="chev" />
         </button>
@@ -813,7 +813,7 @@ export default function SettleApp() {
           {placeOrder.map((id) => anchors.find((a) => a.id === id)).filter((a): a is Anchor => !!a).map((a, i) => anchorRow(a, day ? i + 1 : null))}
         </div>
         {homeRow}
-        {day && stops.own.length > 0 && <div className="daynote">Left out · their own trips from home</div>}
+        {day && stops.own.length > 0 && <div className="daynote">Left out of this day · no route</div>}
         {day && stops.own.map((a) => anchorRow(a, null))}
         {anchors.length < MAX_ANCHORS && (
           <button className="prow add" onClick={() => { setAdding(!adding); setEdit(null); }} aria-expanded={adding}>

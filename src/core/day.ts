@@ -2,8 +2,8 @@ import type { Anchor, LatLng, Mode, Option } from "./types";
 
 /**
  * A saved day: the life anchors you visit, in order, as one trip.
- * Home → first → next → … (→ back home). Anchors you take out of the day stay
- * as their own trips from home, so their times are never lost.
+ * Home → first → next → … (→ back home). Anchors you leave out aren't part of
+ * the day at all: no trip, no route, no Google call (switch to Separate trips to see them).
  * With no day chosen, every anchor is its own trip from home (Settle's default).
  */
 export type Day = {
@@ -11,7 +11,7 @@ export type Day = {
   name: string;
   /** Anchor ids in visiting order. Anchors added later go on the end. */
   order: string[];
-  /** Anchors taken out of this day (each stays its own trip from home). */
+  /** Anchors left out of this day (no trip while the day is chosen). */
   skip: string[];
   /** Finish the day with the trip back home. */
   home: boolean;
@@ -60,7 +60,7 @@ export function dayStops(anchors: Anchor[], day?: Day | null): { stops: Anchor[]
   return { stops: all.filter((a) => !skip.has(a.id)), own: all.filter((a) => skip.has(a.id)) };
 }
 
-/** Every trip for one home on a day: the chained stops first, then each anchor that's its own trip. */
+/** Every trip for one home: the day's chained stops (and the trip back), or with no day, each anchor from home. */
 export function tripsFor(o: Option, anchors: Anchor[], day?: Day | null): Trip[] {
   const { stops, own } = dayStops(anchors, day);
   const trips: Trip[] = stops.map((a, i) => {
@@ -73,7 +73,8 @@ export function tripsFor(o: Option, anchors: Anchor[], day?: Day | null): Trip[]
   if (day?.home && last) {
     trips.push({ from: fromAnchor(last.id), to: o.id, origin: last.location, destination: o.location, anchor: homeStop(o), prev: last, defaultMode: last.mode, kind: "back" });
   }
-  for (const a of own) trips.push({ from: o.id, to: a.id, origin: o.location, destination: a.location, anchor: a, defaultMode: a.mode, kind: "own" });
+  // On a day, left-out anchors get no trip (and so no route request); with no day, every anchor is its own.
+  if (!day) for (const a of own) trips.push({ from: o.id, to: a.id, origin: o.location, destination: a.location, anchor: a, defaultMode: a.mode, kind: "own" });
   return trips;
 }
 

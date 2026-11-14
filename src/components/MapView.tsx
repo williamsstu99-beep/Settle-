@@ -27,6 +27,7 @@ export const GEO = {
   hub: { sel: 46, unsel: 28 },
   tuck: 6, // cards tuck this far under their hub
   sel: { w: 216, hPhoto: 154 },
+  backRow: 20, // "Home from Work · 10 min" under the selected card's details
   unsel: { h: 26 }, // width follows the text: see tabWidth
   anchor: { w: 228, h: 92, hFare: 108, hTab: 30, marker: 24 },
 };
@@ -109,8 +110,22 @@ function useSettledZoom(): number | null {
   return zoom;
 }
 
+/** The selected home's trip back from the day's last stop. */
+type BackHome = { from: string; minutes: number | null | undefined };
+const backText = (b: BackHome) => (typeof b.minutes === "number" ? `${b.minutes} min` : b.minutes === null ? "No route" : "…");
+function BackRow({ b, className }: { b: BackHome; className: string }) {
+  return (
+    <span className={className}>
+      <Icon name="house2" size={12} />
+      <span>Home from {b.from}</span>
+      <b>{backText(b)}</b>
+    </span>
+  );
+}
+
 type HomeCardProps = {
   o: Option;
+  back?: BackHome;
   letter: string;
   selected: boolean;
   side: Side;
@@ -124,7 +139,7 @@ type HomeCardProps = {
  * Hub at the listing's exact location with its label docked beside it (no connector line).
  * Unselected: a small greyed "Name · $price" tab. Selected: a compact dark card.
  */
-const HomeMarker = memo(function HomeMarker({ o, letter, selected, side, growKey, onSelect, onDetail, onPhotos }: HomeCardProps) {
+const HomeMarker = memo(function HomeMarker({ o, back, letter, selected, side, growKey, onSelect, onDetail, onPhotos }: HomeCardProps) {
   const price = o.price ? formatPrice(o.price).replace(/\/(wk|mo)$/, "") : null;
   const per = o.price?.period === "month" ? "/mo" : o.price?.period === "week" ? "/wk" : "";
   const sub = [letter, o.subtitle?.split(",")[0], o.bedrooms ? `${o.bedrooms} bed` : null, o.bathrooms ? `${o.bathrooms} bath` : null].filter(Boolean).join(" · ");
@@ -152,6 +167,7 @@ const HomeMarker = memo(function HomeMarker({ o, letter, selected, side, growKey
                 </button>
               </span>
             </div>
+            {back && <BackRow b={back} className="pc-back" />}
           </div>
         </div>
       ) : (
@@ -168,6 +184,7 @@ const HomeMarker = memo(function HomeMarker({ o, letter, selected, side, growKey
 
 type MobileHomeProps = {
   o: Option;
+  back?: BackHome;
   letter: string;
   selected: boolean;
   open: boolean;
@@ -183,7 +200,7 @@ type MobileHomeProps = {
  * Once selected, a faint arrow under the name opens the rest: photos (add from
  * the phone's camera or library), price, rooms and the listing.
  */
-const MobileHomeMarker = memo(function MobileHomeMarker({ o, letter, selected, open, side, onSelect, onToggle, onDetail, onPhotos }: MobileHomeProps) {
+const MobileHomeMarker = memo(function MobileHomeMarker({ o, back, letter, selected, open, side, onSelect, onToggle, onDetail, onPhotos }: MobileHomeProps) {
   const price = o.price ? formatPrice(o.price).replace(/\/(wk|mo)$/, "") : null;
   const per = o.price?.period === "month" ? "/mo" : o.price?.period === "week" ? "/wk" : "";
   const facts = homeFacts(o);
@@ -227,6 +244,7 @@ const MobileHomeMarker = memo(function MobileHomeMarker({ o, letter, selected, o
                 </div>
               )}
               <span className="mo-sub">{[letter, area].filter(Boolean).join(" · ")}</span>
+              {back && <BackRow b={back} className="mo-back" />}
               <div className="mo-acts">
                 {link && (
                   <a href={link} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()}>
@@ -385,20 +403,26 @@ export default function MapView(p: Props) {
             delay: stepIn ? li * STEP_GAP : 0,
             drawMs: stepIn ? STEP_DRAW : DRAW_MS,
             rides,
+            light: l.kind === "back",
             pts: isSel ? pieces.flatMap((x) => x.path.filter((_, i) => i % 2 === 0)) : [],
           }];
         }),
       ),
     [rows, anchors, selected, p.epoch, p.stepped, p.instant],
   );
-  const drawRoutes: DrawRoute[] = useMemo(() => routes.map(({ key, optionId, color, parts, selected: s, delay, drawMs }) => ({ key, optionId, color, parts, selected: s, delay, drawMs })), [routes]);
+  const drawRoutes: DrawRoute[] = useMemo(() => routes.map(({ key, optionId, color, parts, selected: s, delay, drawMs, light }) => ({ key, optionId, color, parts, selected: s, delay, drawMs, light })), [routes]);
 
   /* ---------- card sides: recomputed only when homes/places, selection, selected routes or zoom change ---------- */
   const [sides, setSides] = useState<Record<string, Side>>({});
   // Mobile: which selected home has its card opened (closes when the selection moves on).
   const [openId, setOpenId] = useState<string | null>(null);
   const opened = p.mobile && openId != null && openId === selected ? openId : null;
-  const idsKey = `${options.map((o) => `${o.id}${o.photo ? "p" : ""}`).join(",")}|${anchors.map((a) => a.id).join(",")}|${selected}|${p.mobile}|${opened}`;
+  // The selected home's trip back from the day's last stop, shown on its card.
+  const backHome = useMemo<BackHome | undefined>(() => {
+    const l = selected ? rows.find((r) => r.option.id === selected)?.legs.find((x) => x.kind === "back") : undefined;
+    return l ? { from: l.prev?.name ?? "your last stop", minutes: l.minutes } : undefined;
+  }, [rows, selected]);
+  const idsKey = `${options.map((o) => `${o.id}${o.photo ? "p" : ""}`).join(",")}|${anchors.map((a) => a.id).join(",")}|${selected}|${p.mobile}|${opened}|${!!backHome}`;
   const routeKey = routes.filter((r) => r.selected).map((r) => r.key).join(",");
   useEffect(() => {
     if (!map || zoom == null) return;
@@ -417,7 +441,8 @@ export default function MapView(p: Props) {
       const at = px(o.location), isSel = o.id === selected, isOpen = o.id === opened;
       const hub = p.mobile ? (isSel ? M.hub.sel : M.hub.unsel) : isSel ? GEO.hub.sel : GEO.hub.unsel;
       const w = p.mobile ? (isOpen ? M.home.open.w : mobileHomeWidth(o.title, isSel)) : isSel ? GEO.sel.w : tabWidth(o);
-      const h = p.mobile ? (isOpen ? M.home.open.h : isSel ? M.home.hSel : M.home.h) : isSel ? GEO.sel.hPhoto : GEO.unsel.h;
+      const extra = isSel && backHome ? GEO.backRow : 0;
+      const h = p.mobile ? (isOpen ? M.home.open.h + extra : isSel ? M.home.hSel : M.home.h) : isSel ? GEO.sel.hPhoto + extra : GEO.unsel.h;
       const reach = hub / 2 - (p.mobile ? M.tuck : GEO.tuck);
       items.push({ id: `o:${o.id}`, at, priority: isSel ? 0 : 2, prefer: ["right", "left", "below", "above"], boxes: Object.fromEntries(SIDES.map((s) => [s, dockedBox(at, w, h, s, reach)])) as SideItem["boxes"] });
       markers.push({ id: `o:${o.id}`, at, r: hub / 2 + 4 });
@@ -516,6 +541,7 @@ export default function MapView(p: Props) {
           {p.mobile ? (
             <MobileHomeMarker
               o={o}
+              back={o.id === selected ? backHome : undefined}
               letter={letterOf(i)}
               selected={o.id === selected}
               open={o.id === opened}
@@ -528,6 +554,7 @@ export default function MapView(p: Props) {
           ) : (
           <HomeMarker
             o={o}
+            back={o.id === selected ? backHome : undefined}
             letter={letterOf(i)}
             selected={o.id === selected}
             side={sides[`o:${o.id}`] ?? "right"}
