@@ -818,7 +818,7 @@ export default function SettleApp() {
         {anchors.length < MAX_ANCHORS && (
           <button className="prow add" onClick={() => { setAdding(!adding); setEdit(null); }} aria-expanded={adding}>
             <span className="badge lg"><Icon name="plus" size={15} /></span>
-            <span className="t"><b>{setup ? (anchors.length ? "Add another place" : "Add a place") : "Add a life anchor"}</b></span>
+            <span className="t"><b>{setup ? "Add anchor" : "Add a life anchor"}</b></span>
           </button>
         )}
         {adding && (
@@ -868,8 +868,8 @@ export default function SettleApp() {
             <>
               <div className="onboard">
                 <span className="ob-step">Step 1 of 2</span>
-                <h2>Add your places</h2>
-                <p>The places that matter to you: work, the gym, your partner’s place, the kids’ school. Add as many as you like, then press Next.</p>
+                <h2>Add the places that matter to you</h2>
+                <p>Work, the gym, your partner’s place, the kids’ school. These are your life anchors. Add as many as you like, then press Next.</p>
                 <div className="ob-ideas">
                   {ANCHOR_IDEAS.filter((n) => !anchors.some((a) => a.name === n)).map((n) => (
                     <button key={n} onClick={() => { setDraft({ name: n, mode: "drive" }); setAdding(true); setEdit(null); }}>{n}</button>
@@ -878,7 +878,7 @@ export default function SettleApp() {
               </div>
               {places}
               <div className="ob-foot">
-                <span>{anchors.length ? `${anchors.length} ${anchors.length === 1 ? "place" : "places"} added` : "Add at least one place"}</span>
+                <span>{anchors.length ? `${anchors.length} ${anchors.length === 1 ? "anchor" : "anchors"} added` : "Add at least one anchor"}</span>
                 <button className="btn dark" disabled={!anchors.length} onClick={() => { setSetup("homes"); setAdding(false); setEdit(null); setHomeForm(options.length ? "closed" : null); }}>
                   Next<Icon name="arrow" size={14} />
                 </button>
@@ -920,7 +920,7 @@ export default function SettleApp() {
               )}
               {!hasMaps && <p className="hint">Adding homes and places needs the Google Maps key (see README).</p>}
               <div className="ob-foot">
-                <button className="link" onClick={() => { setSetup("places"); setHomeForm("closed"); }}><Icon name="back" size={13} />Back to places</button>
+                <button className="link" onClick={() => { setSetup("places"); setHomeForm("closed"); }}><Icon name="back" size={13} />Back to anchors</button>
                 <button className="btn dark" disabled={!options.length} onClick={() => { setSetup(null); setHomeForm("closed"); setFitKey(newId()); }}>
                   Show on the map<Icon name="arrow" size={14} />
                 </button>
