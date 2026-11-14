@@ -17,9 +17,17 @@ export type DrawRoute = {
   delay?: number;
   /** How long this route takes to draw (ms); defaults to DRAW_MS. */
   drawMs?: number;
+  /**
+   * The trip back home: it draws in colour, then fades to a very light grey line,
+   * since it often runs over the trip there.
+   */
+  light?: boolean;
 };
 
 export const GREY = "#B5BBC3";
+export const LIGHT_GREY = "#DADEE3"; // the trip back home, once drawn
+export const LIGHT_HOLD = 700; // the trip home stays in colour this long after drawing…
+export const LIGHT_FADE = 900; // …then fades to light grey over this long
 export const DRAW_MS = 1200; // coloured routes draw out of the hub
 export const FADE_MS = 400; // colour fades back to grey when another home is selected
 /** Step-through reveal: one place's route at a time. */
@@ -33,6 +41,7 @@ export type Line = {
   parts: Part[];
   colourAt: number | null; // when it became selected (draws out); null = already drawn
   greyAt: number | null; // when it stopped being selected (colour fades)
+  lightAt: number | null; // light routes: when the colour starts fading to light grey
   dying: number | null; // removed (e.g. mode changed): everything fades out
 };
 
@@ -69,6 +78,7 @@ export function syncLines(lines: Map<string, Line>, routes: DrawRoute[], now: nu
         parts: layoutParts(r).map((p) => ({ ...p, grey: create(), casing: create(), core: create() })),
         colourAt: r.selected && !instant ? now + (r.delay ?? 0) : null,
         greyAt: null,
+        lightAt: r.light && instant ? -Infinity : null,
         dying: null,
       });
       continue;
@@ -77,6 +87,7 @@ export function syncLines(lines: Map<string, Line>, routes: DrawRoute[], now: nu
     if (r.selected && !l.route.selected) {
       l.colourAt = instant ? null : now + (r.delay ?? 0);
       l.greyAt = null;
+      l.lightAt = r.light && instant ? -Infinity : null;
     } else if (!r.selected && l.route.selected) {
       l.greyAt = instant ? now - FADE_MS : now;
       l.colourAt = null;
@@ -177,6 +188,13 @@ export function paint(lines: Map<string, Line>, t: number): boolean {
       if (colour > 0) moving = true;
       else l.greyAt = null;
     }
+    // The trip home: once drawn, hold a moment, then settle to light grey.
+    if (r.light && r.selected && l.colourAt == null) {
+      if (l.lightAt == null) l.lightAt = t + LIGHT_HOLD;
+      const f = (t - l.lightAt) / LIGHT_FADE;
+      if (f < 1) moving = true;
+      colour *= Math.min(1, Math.max(0, 1 - f));
+    }
     colour *= fade;
 
     const lastLive = l.parts.findLastIndex((p) => progress > p.start);
@@ -189,7 +207,8 @@ export function paint(lines: Map<string, Line>, t: number): boolean {
       if (showColour && drawing && i === lastLive) icons.push(head(r.color));
       if (showColour && r.selected && !drawing && l.dying == null && !p.dashed) icons.push(chevrons());
 
-      p.grey.setOptions({ visible: true, path: p.m.path, strokeColor: GREY, strokeOpacity: p.dashed ? 0 : 0.95 * fade, strokeWeight: 2, zIndex: 1, icons: p.dashed ? [dashes(GREY, 0.95 * fade, 2)] : [] });
+      const base = r.light ? LIGHT_GREY : GREY, bw = r.light ? 3 : 2;
+      p.grey.setOptions({ visible: true, path: p.m.path, strokeColor: base, strokeOpacity: p.dashed ? 0 : 0.95 * fade, strokeWeight: bw, zIndex: 1, icons: p.dashed ? [dashes(base, 0.95 * fade, bw)] : [] });
       p.casing.setOptions({ visible: showColour, path, strokeColor: "#ffffff", strokeOpacity: colour, strokeWeight: 9, zIndex: 10 });
       p.core.setOptions({ visible: showColour, path, strokeColor: r.color, strokeOpacity: p.dashed ? 0 : colour, strokeWeight: 5, zIndex: 11, icons });
     });

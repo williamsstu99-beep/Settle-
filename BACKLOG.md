@@ -8,7 +8,7 @@ Budget: **Google Maps Platform max US$50/month** beyond the free allowances.
 - **Hero screenshot:** a real app screenshot of a listing with photos at `public/landing/hero.png` (~1200×1040). The owner provides it.
 
 ## Open decisions
-- **Day planner on the map:** check on a Vercel preview with real Google that chained routes, the trip back home (ink line) and step-through look right.
+- **Day planner on the map:** check on a Vercel preview with real Google that chained routes, the trip back home (draws, then settles to light grey) and step-through look right.
 - **Launch plan:** audience, timing and domain are not decided yet.
 
 ## Parked (later)
@@ -45,3 +45,4 @@ Budget: **Google Maps Platform max US$50/month** beyond the free allowances.
 - Fixes from the day planner preview: anchors added while a day is active now always show in the panel (a drag whose drop was missed could leave the list stuck on its old order; drags are now heard on the whole window, and the list always includes every anchor). A house button in the header goes back to the overview; the phone/desktop switch moved to the map. Each trip shows its mode with a ">" and the other modes open on demand, and their times only load then (fewer Route Matrix calls).
 - First-run setup: step 1 "Add your places" and step 2 "Add your properties" each take as many as you like; you move on with Next and Show on the map (Back to places too). Day controls stay hidden until setup is done.
 - Setup copy: step 1 now reads "Add the places that matter to you", its button "Add anchor", and step 2 goes "Back to anchors".
+- Day planner polish: anchors left out of a day get no trip at all (no route, no Google call); the trip back home draws then fades to very light grey; the selected property's map card shows "Home from <last stop> · N min".

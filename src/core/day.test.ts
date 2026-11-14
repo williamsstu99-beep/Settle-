@@ -28,11 +28,11 @@ describe("days", () => {
     expect(anchorColor(t[3].anchor, -1).id).toBe("home");
   });
 
-  it("keeps anchors taken out of the day as their own trips from home", () => {
+  it("gives anchors left out of the day no trip at all (so no route is fetched)", () => {
     const t = tripsFor(home("A"), anchors, day({ skip: ["partner"], home: false }));
-    expect(t.map((x) => [x.from, x.to, x.kind])).toEqual([["A", "gym", "first"], [fromAnchor("gym"), "work", "chain"], ["A", "partner", "own"]]);
+    expect(t.map((x) => [x.from, x.to, x.kind])).toEqual([["A", "gym", "first"], [fromAnchor("gym"), "work", "chain"]]);
     expect(dayStops(anchors, day({ skip: ["gym", "work", "partner"] })).stops).toEqual([]);
-    expect(tripsFor(home("A"), anchors, day({ skip: ["gym", "work", "partner"] })).every((x) => x.kind === "own")).toBe(true);
+    expect(tripsFor(home("A"), anchors, day({ skip: ["gym", "work", "partner"] }))).toEqual([]);
   });
 
   it("reorders, skips and restores", () => {
@@ -72,10 +72,11 @@ describe("compare on a day", () => {
   it("times each trip from the previous stop and ranks homes on the whole day", () => {
     const c = compare([home("A"), home("B")], anchors, new Map(), times, {}, d);
     const a = c.rows.find((r) => r.option.id === "A")!;
-    expect(a.legs.map((l) => [l.to, l.minutes, l.shared])).toEqual([["gym", 10, false], ["work", 15, true], ["A", 30, false], ["partner", 5, false]]);
-    expect(a.dailyMinutes).toBe(10 + 15 + 30 + 2 * 5);
-    expect(c.rows[0].option.id).toBe("B"); // 20 + 15 + 12 + 10 = 57 < 65
-    expect(c.fastest).toEqual([10, null, 12, 5]); // the shared stop → stop trip is never ranked
+    // "partner" is left out of the day, so it has no trip.
+    expect(a.legs.map((l) => [l.to, l.minutes, l.shared])).toEqual([["gym", 10, false], ["work", 15, true], ["A", 30, false]]);
+    expect(a.dailyMinutes).toBe(10 + 15 + 30);
+    expect(c.rows[0].option.id).toBe("B"); // 20 + 15 + 12 = 47 < 55
+    expect(c.fastest).toEqual([10, null, 12]); // the shared stop → stop trip is never ranked
   });
 
   it("uses overrides keyed by the trip", () => {

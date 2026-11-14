@@ -1,6 +1,6 @@
 import { beforeAll, describe, expect, it } from "vitest";
 import { measure } from "@/core/polyline";
-import { DRAW_MS, FADE_MS, GREY, layoutParts, paint, STEP_DRAW, STEP_GAP, syncLines, type DrawRoute, type Line } from "./RouteLayer";
+import { DRAW_MS, FADE_MS, GREY, LIGHT_FADE, LIGHT_GREY, LIGHT_HOLD, layoutParts, paint, STEP_DRAW, STEP_GAP, syncLines, type DrawRoute, type Line } from "./RouteLayer";
 
 class FakePolyline {
   o: Record<string, unknown> = {};
@@ -24,6 +24,25 @@ function setup() {
 }
 
 describe("routes", () => {
+  it("draws the trip home in colour, then settles it to a very light grey line", () => {
+    const { lines, create, layer } = setup();
+    syncLines(lines, [{ ...route("A", "home", true, "#5B6270"), light: true }], 0, create);
+    paint(lines, DRAW_MS / 2);
+    expect(layer("A|home", "core")).toMatchObject({ visible: true, strokeColor: "#5B6270" });
+    const done = DRAW_MS + 10;
+    expect(paint(lines, done)).toBe(true); // still holding, then fading
+    expect(layer("A|home", "core").visible).toBe(true);
+    expect(paint(lines, done + LIGHT_HOLD + LIGHT_FADE + 10)).toBe(false);
+    expect(layer("A|home", "core").visible).toBe(false);
+    expect(layer("A|home", "grey")).toMatchObject({ visible: true, strokeColor: LIGHT_GREY, strokeWeight: 3 });
+  });
+  it("shows the trip home straight in light grey with reduced motion", () => {
+    const { lines, create, layer } = setup();
+    syncLines(lines, [{ ...route("A", "home", true), light: true }], 0, create, true);
+    expect(paint(lines, 0)).toBe(false);
+    expect(layer("A|home", "core").visible).toBe(false);
+    expect(layer("A|home", "grey").strokeColor).toBe(LIGHT_GREY);
+  });
   it("shows every home's routes as thin grey lines", () => {
     const { lines, create, layer } = setup();
     syncLines(lines, all("A"), 0, create);
