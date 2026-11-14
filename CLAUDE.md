@@ -28,7 +28,7 @@ Settle helps people pick a home by how it fits their life. Users add **life anch
   - 3-day server cache plus browser cache, so reselecting is free. Per-IP rate limits on every API route.
   - Don't add calls per render, per pan or per unselected home.
 - **No server state, no accounts:** plans persist in `localStorage` (`settle.plan.v1` etc.). Share links encode the plan in `#s=` (no photos). User photos are downscaled data URLs, max 4 per property, device-only.
-- **Starts empty:** anchors first (step 1), then properties (step 2). The example plan only loads at `/compare?example=1` and is never saved.
+- **Starts empty:** a two-step setup you move through yourself: "Add your places" (any number, then Next), then "Add your properties" (any number, then Show on the map). It never jumps ahead after the first one. The example plan only loads at `/compare?example=1` and is never saved.
 - **Drive is the default mode** for new anchors (Auckland drives). Per-leg overrides are keyed `${optionId}|${anchorId}`.
 - **Map:**
   - No cloud Map ID; markers are `OverlayView` via `HtmlMarker`, not AdvancedMarkers.

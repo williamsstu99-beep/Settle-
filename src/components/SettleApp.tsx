@@ -126,6 +126,11 @@ export default function SettleApp() {
   const [hoverStop, setHoverStop] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const [fitKey, setFitKey] = useState("init");
+  /**
+   * First-run setup: places first, then properties, each as many as you like.
+   * You move on with Next / Show on the map, never automatically.
+   */
+  const [setupState, setSetup] = useState<"places" | "homes" | null>(() => (plan.example ? null : !plan.anchors.length ? "places" : !plan.options.length ? "homes" : null));
   /** The one trip whose other ways to travel are showing (its times load only then, to save Google calls). */
   const [modesOpen, setModesOpen] = useState<{ optionId: string; key: string } | null>(null);
   const sideScroll = useRef<HTMLDivElement>(null);
@@ -134,6 +139,8 @@ export default function SettleApp() {
   const overrides = useMemo(() => plan.overrides ?? {}, [plan.overrides]);
   const days = useMemo(() => plan.days ?? [], [plan.days]);
   const day = useMemo(() => activeDay({ days, dayId: plan.dayId }), [days, plan.dayId]);
+  // No places at all (e.g. all removed) always means step 1.
+  const setup = setupState ?? (!anchors.length && !plan.example ? "places" : null);
   const letter = useCallback((id: string) => letterOf(Math.max(0, options.findIndex((o) => o.id === id))), [options]);
   const swatch = (a: Anchor) => anchorColor(a, anchors.indexOf(a));
   const swatchStyle = (a: Anchor) => ({ "--a": swatch(a).marker, "--ar": swatch(a).route, "--at": swatch(a).tab } as React.CSSProperties);
@@ -800,7 +807,7 @@ export default function SettleApp() {
   const places = (
     <>
       <div className="sec">{day ? "Life anchors · your day, in order" : "Life anchors · usual way to get there"}</div>
-      {dayBar}
+      {!setup && dayBar}
       <div className="nav">
         <div data-reorder>
           {placeOrder.map((id) => anchors.find((a) => a.id === id)).filter((a): a is Anchor => !!a).map((a, i) => anchorRow(a, day ? i + 1 : null))}
@@ -811,7 +818,7 @@ export default function SettleApp() {
         {anchors.length < MAX_ANCHORS && (
           <button className="prow add" onClick={() => { setAdding(!adding); setEdit(null); }} aria-expanded={adding}>
             <span className="badge lg"><Icon name="plus" size={15} /></span>
-            <span className="t"><b>Add a life anchor</b></span>
+            <span className="t"><b>{setup ? (anchors.length ? "Add another place" : "Add a place") : "Add a life anchor"}</b></span>
           </button>
         )}
         {adding && (
@@ -857,19 +864,67 @@ export default function SettleApp() {
               <a href="/compare">Start your own</a>
             </div>
           )}
-          {!anchors.length ? (
+          {setup === "places" ? (
             <>
               <div className="onboard">
                 <span className="ob-step">Step 1 of 2</span>
-                <h2>Start with your life anchors</h2>
-                <p>The places that actually matter: work, the gym, your partner’s place, the kids’ school. Every home you add is measured against them.</p>
+                <h2>Add your places</h2>
+                <p>The places that matter to you: work, the gym, your partner’s place, the kids’ school. Add as many as you like, then press Next.</p>
                 <div className="ob-ideas">
-                  {ANCHOR_IDEAS.map((n) => (
+                  {ANCHOR_IDEAS.filter((n) => !anchors.some((a) => a.name === n)).map((n) => (
                     <button key={n} onClick={() => { setDraft({ name: n, mode: "drive" }); setAdding(true); setEdit(null); }}>{n}</button>
                   ))}
                 </div>
               </div>
               {places}
+              <div className="ob-foot">
+                <span>{anchors.length ? `${anchors.length} ${anchors.length === 1 ? "place" : "places"} added` : "Add at least one place"}</span>
+                <button className="btn dark" disabled={!anchors.length} onClick={() => { setSetup("homes"); setAdding(false); setEdit(null); setHomeForm(options.length ? "closed" : null); }}>
+                  Next<Icon name="arrow" size={14} />
+                </button>
+              </div>
+            </>
+          ) : setup === "homes" ? (
+            <>
+              <div className="onboard">
+                <span className="ob-step">Step 2 of 2</span>
+                <h2>Add your properties</h2>
+                <p>The homes you’re weighing up. Give each a name, then the address or a TradeMe link. Add as many as you like, then show them on the map.</p>
+              </div>
+              {error && <p className="err" style={{ margin: "0 2px 10px" }}>{error}</p>}
+              <div className="nav">
+                {options.map((o) => (
+                  <div key={o.id} className="arow-wrap">
+                    <div className="prow static">
+                      <span className="badge">{letter(o.id)}</span>
+                      <span className="t">
+                        <b>{o.title}</b>
+                        <span>{[o.subtitle?.split(",")[0], homeFacts(o, o.price ? formatPrice(o.price) : null)].filter(Boolean).join(" · ")}</span>
+                      </span>
+                    </div>
+                    <button className="x" onClick={() => removeOption(o.id)} aria-label={`Remove ${o.title}`} title="Remove"><Icon name="close" size={13} /></button>
+                  </div>
+                ))}
+              </div>
+              {hasMaps && options.length < MAX_OPTIONS && (
+                newHomeOpen ? (
+                  <div className="newhome">
+                    <HomeForm fetchListing={fetchListing} onSave={(d) => saveHome(null, d)} onCancel={() => setHomeForm("closed")} />
+                  </div>
+                ) : (
+                  <button className="prow add addprop" onClick={() => { setHomeForm("new"); setAdding(false); setEdit(null); }}>
+                    <span className="badge lg"><Icon name="plus" size={15} /></span>
+                    <span className="t"><b>{options.length ? "Add another property" : "Add a property"}</b></span>
+                  </button>
+                )
+              )}
+              {!hasMaps && <p className="hint">Adding homes and places needs the Google Maps key (see README).</p>}
+              <div className="ob-foot">
+                <button className="link" onClick={() => { setSetup("places"); setHomeForm("closed"); }}><Icon name="back" size={13} />Back to places</button>
+                <button className="btn dark" disabled={!options.length} onClick={() => { setSetup(null); setHomeForm("closed"); setFitKey(newId()); }}>
+                  Show on the map<Icon name="arrow" size={14} />
+                </button>
+              </div>
             </>
           ) : (
             <>
@@ -884,7 +939,6 @@ export default function SettleApp() {
             {hasMaps && options.length < MAX_OPTIONS && (
               newHomeOpen ? (
                 <div className="newhome">
-                  {!options.length && <p className="nh-step"><b>Step 2 of 2 · Add your properties here</b> Give it a name, then the address or a TradeMe link. Settle works out the trip from it to each of your anchors.</p>}
                   <HomeForm fetchListing={fetchListing} onSave={(d) => saveHome(null, d)} onCancel={() => setHomeForm("closed")} />
                 </div>
               ) : (
