@@ -4,13 +4,14 @@ Keep this current: every PR updates it (move items to Done, add what was learned
 Budget: **Google Maps Platform max US$50/month** beyond the free allowances.
 
 ## Next up
-- **Mobile mode:** the map is unusable on phones. Map cards are fixed-size overlays (home card 216px, anchor cards 228px) that never shrink with zoom, so on a ~390px screen they cover the map. Build a dedicated mobile mode (on by default on small screens, with a toggle) with smaller or hidden map cards and a mobile-friendly panel. Approach being agreed with the owner.
+- **Mobile panel:** the map cards are done (see Done); the panel below the map is still the desktop panel stacked underneath. Options raised: A) a bottom sheet over a full-screen map (peek / half / full), B) Map / List tabs, C) keep stacked but tighten it. Not decided.
 - **Hero screenshot:** a real app screenshot of a listing with photos at `public/landing/hero.png` (~1200×1040). The owner provides it.
 
 ## Open decisions
 - **Launch plan:** audience, timing and domain are not decided yet.
 
 ## Parked (later)
+- **Mobile, zoomed far out:** cards keep a fixed size at every zoom, so far out they can still overlap. Possible later: shrink anchor cards to just the tab below a zoom level.
 - **Budget guard (US$50/month)** (parked by the owner, keep): do these outside the code, then add an app-side guard.
   - **Google Cloud console:** budget alerts at 50/90/100%, plus daily quota caps on the Routes API and Places API (New). A budget alone only warns; quota caps actually stop spend.
   - **App guard:** a server-side daily request cap that shows "Settle is busy today, try tomorrow" instead of billing past the limit. This needs a shared counter (Vercel KV/Upstash), since in-memory counters are per instance.
@@ -35,3 +36,4 @@ Budget: **Google Maps Platform max US$50/month** beyond the free allowances.
 - #12: landing page at `/`, route-S logo and favicon, the app at `/compare` starts empty with life anchors first, example via `?example=1`.
 - #13: property form (name, address → suburb, rent, beds, baths, listing link, photos), photos on the map card, chip borders removed.
 - #14: CLAUDE.md and this backlog.
+- Mobile mode: on by itself up to 760px, header toggle remembered per device. Homes are a small name tab (the desktop's unselected style); selected adds a faint arrow that opens photos (camera or library), price, rooms and links, and pans the card into view. Anchors keep their tabbed card, shrunk to name, time and mode symbol. Also fixed a double dashed border on the empty photo box. Parked: budget guard, motorway snapping and cards covering routes.

@@ -1,12 +1,13 @@
 "use client";
 
 import { Map as GoogleMap, useMap } from "@vis.gl/react-google-maps";
-import { memo, useEffect, useMemo, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { effectiveMode, formatPrice, legKey, type OptionSummary, type Overrides } from "@/core/compare";
 import { fareLine, modeDetail, rankBadge, suburbOf } from "@/core/describe";
 import { awayFrom, chooseSides, dockedBox, SIDES, type Pt, type Side, type SideItem } from "@/core/layout";
 import { anchorColor, letterOf, type Swatch } from "@/core/plan";
-import { listingUrl, MAX_PHOTOS, photosOf } from "@/core/home";
+import { homeFacts, listingUrl, MAX_PHOTOS, photosOf } from "@/core/home";
+import { MOBILE_GEO, mobileAnchorWidth, mobileHomeWidth } from "@/core/view";
 import { decodePolyline, measure, midpoint } from "@/core/polyline";
 import type { Anchor, LatLng, Leg, Mode, Option } from "@/core/types";
 import { CountUp } from "./CountUp";
@@ -59,6 +60,8 @@ type Props = {
   stops: { id: string; name: string; location: LatLng }[];
   hoverStop: string | null;
   onStopHover: (id: string | null) => void;
+  /** Mobile mode: phone-sized cards (see core/view.ts). */
+  mobile: boolean;
 };
 
 /**
@@ -165,8 +168,90 @@ const HomeMarker = memo(function HomeMarker({ o, letter, selected, side, growKey
   );
 });
 
+type MobileHomeProps = {
+  o: Option;
+  letter: string;
+  selected: boolean;
+  open: boolean;
+  side: Side;
+  onSelect: (id: string) => void;
+  onToggle: (id: string) => void;
+  onDetail: (id: string) => void;
+  onPhotos: (id: string, photos: string[]) => void;
+};
+
+/**
+ * Mobile home: the hub with a small white tab holding just the home's name.
+ * Once selected, a faint arrow under the name opens the rest: photos (add from
+ * the phone's camera or library), price, rooms and the listing.
+ */
+const MobileHomeMarker = memo(function MobileHomeMarker({ o, letter, selected, open, side, onSelect, onToggle, onDetail, onPhotos }: MobileHomeProps) {
+  const price = o.price ? formatPrice(o.price).replace(/\/(wk|mo)$/, "") : null;
+  const per = o.price?.period === "month" ? "/mo" : o.price?.period === "week" ? "/wk" : "";
+  const facts = homeFacts(o);
+  const area = o.subtitle?.split(",")[0];
+  const link = listingUrl(o);
+  const map = useMap();
+  const card = useRef<HTMLDivElement>(null);
+  // Opening the card: nudge the map so the whole card is on screen (clear of the map buttons).
+  useEffect(() => {
+    if (!open || !map) return;
+    const raf = requestAnimationFrame(() => {
+      const c = card.current?.getBoundingClientRect(), m = map.getDiv().getBoundingClientRect();
+      if (!c) return;
+      const pad = 10, top = 52;
+      const dx = c.left < m.left + pad ? c.left - m.left - pad : c.right > m.right - pad ? c.right - m.right + pad : 0;
+      const dy = c.top < m.top + top ? c.top - m.top - top : c.bottom > m.bottom - pad ? c.bottom - m.bottom + pad : 0;
+      if (dx || dy) map.panBy(dx, dy);
+    });
+    return () => cancelAnimationFrame(raf);
+  }, [open, map, side]);
+  return (
+    <div className={`pm m side-${side}${selected ? " sel" : ""}${open ? " open" : ""}`}>
+      <div key={side} ref={card} className="mtab">
+        <button
+          className="mtab-name"
+          onClick={() => (selected ? onToggle(o.id) : onSelect(o.id))}
+          aria-expanded={selected ? open : undefined}
+          aria-label={selected ? `${o.title}: ${open ? "hide" : "show"} details` : `Select ${letter}: ${o.title}`}
+        >
+          <span>{o.title}</span>
+          {selected && <Icon name="chev" size={14} className="mchev" />}
+        </button>
+        {open && (
+          <div className="mopen">
+            <CardPhotos key={o.id} pics={photosOf(o)} own={o.photos ?? []} onChange={(p) => onPhotos(o.id, p)} hint="Camera or library" />
+            <div className="mo-body">
+              {(price || facts) && (
+                <div className="mo-row">
+                  {price && <b className="mo-price">{price}<small>{per}</small></b>}
+                  {facts && <span className="mo-facts">{facts}</span>}
+                </div>
+              )}
+              <span className="mo-sub">{[letter, area].filter(Boolean).join(" · ")}</span>
+              <div className="mo-acts">
+                {link && (
+                  <a href={link} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()}>
+                    <Icon name="external" size={12} />Listing
+                  </a>
+                )}
+                <button onClick={(e) => { e.stopPropagation(); onDetail(o.id); }}>
+                  Details<Icon name="arrow" size={12} />
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+      <button className={`hub${selected ? " sel" : ""}`} onClick={() => onSelect(o.id)} aria-label={`Select ${o.title}`}>
+        <Icon name="house2" size={selected ? 18 : 13} />
+      </button>
+    </div>
+  );
+});
+
 /** Top of the selected card: your photos (tap to flick through) with a "+", or a spot to paste, drop or choose some. */
-function CardPhotos({ pics, own, onChange }: { pics: string[]; own: string[]; onChange: (p: string[]) => void }) {
+function CardPhotos({ pics, own, onChange, hint = "Paste, drop or choose" }: { pics: string[]; own: string[]; onChange: (p: string[]) => void; hint?: string }) {
   const [i, setI] = useState(0);
   const [over, setOver] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
@@ -209,7 +294,7 @@ function CardPhotos({ pics, own, onChange }: { pics: string[]; own: string[]; on
       ) : (
         <button className="pc-drop" onClick={(e) => { e.stopPropagation(); input.current?.click(); }}>
           <Icon name="plus" size={16} />
-          <span><b>Add photos</b>{msg ?? "Paste, drop or choose"}</span>
+          <span><b>Add photos</b>{msg ?? hint}</span>
         </button>
       )}
       <input ref={input} type="file" accept="image/*" multiple hidden onChange={(e) => { void add(Array.from(e.target.files ?? [])); e.target.value = ""; }} />
@@ -228,20 +313,29 @@ type PlaceProps = {
   /** When this place's route starts and how long it takes (step-through reveal). */
   delay: number;
   drawMs: number;
+  /** Mobile: the name tab, then just the time and the mode's symbol. */
+  mobile: boolean;
   onClick: (id: string) => void;
 };
 
 /** Place marker at the exact location, with a tabbed card whose edge it sits on. */
-const PlaceMarker = memo(function PlaceMarker({ a, sw, side, view, badge, countKey, instant, delay, drawMs, onClick }: PlaceProps) {
-  const fare = view ? fareLine({ mode: view.mode, leg: view.leg }) : null;
+const PlaceMarker = memo(function PlaceMarker({ a, sw, side, view, badge, countKey, instant, delay, drawMs, mobile, onClick }: PlaceProps) {
+  const fare = view && !mobile ? fareLine({ mode: view.mode, leg: view.leg }) : null;
   // Step-through: until its route arrives the card waits faded, then lights up.
   const stepIn = !instant && drawMs < DRAW_MS;
   const style = { "--tab": sw.tab, "--text": sw.text, "--route": sw.route, "--marker": sw.marker, "--arrive": `${delay + drawMs * 0.85}ms` } as React.CSSProperties;
   return (
-    <div className={`am side-${side}`} style={style}>
+    <div className={`am${mobile ? " m" : ""} side-${side}`} style={style}>
       <div key={`${side}${view ? countKey.split(":").slice(0, 2).join(":") : ""}`} className={`acard${fare ? " fare" : ""}${view ? (stepIn ? " arrive" : "") : " bare"}`} onClick={() => onClick(a.id)} role="button" tabIndex={0} aria-label={`Edit ${a.name}`} onKeyDown={(e) => e.key === "Enter" && onClick(a.id)}>
-        <div className="atab"><b>{a.name}</b>{suburbOf(a) && <span>{suburbOf(a)}</span>}</div>
-        {view && <div className="abody">
+        <div className="atab"><b>{a.name}</b>{!mobile && suburbOf(a) && <span>{suburbOf(a)}</span>}</div>
+        {view && mobile && <div className="abody">
+          <span className="atime">
+            {typeof view.minutes === "number" ? <CountUp key={countKey} value={view.minutes} ms={drawMs} delay={delay} instant={instant} /> : view.minutes === null ? "–" : "…"}
+            <small>min</small>
+          </span>
+          <Icon name={view.mode} size={15} className="amode-i" />
+        </div>}
+        {view && !mobile && <div className="abody">
           <div className="arow">
             <span className="atime">
               {typeof view?.minutes === "number" ? <CountUp key={countKey} value={view.minutes} ms={drawMs} delay={delay} instant={instant} /> : view?.minutes === null ? "–" : "…"}
@@ -253,7 +347,7 @@ const PlaceMarker = memo(function PlaceMarker({ a, sw, side, view, badge, countK
           {fare && <div className="afare">{fare}</div>}
         </div>}
       </div>
-      <span className="amark"><Icon name="anchor" size={13} /></span>
+      <span className="amark"><Icon name="anchor" size={mobile ? 11 : 13} /></span>
     </div>
   );
 });
@@ -301,7 +395,10 @@ export default function MapView(p: Props) {
 
   /* ---------- card sides: recomputed only when homes/places, selection, selected routes or zoom change ---------- */
   const [sides, setSides] = useState<Record<string, Side>>({});
-  const idsKey = `${options.map((o) => `${o.id}${o.photo ? "p" : ""}`).join(",")}|${anchors.map((a) => a.id).join(",")}|${selected}`;
+  // Mobile: which selected home has its card opened (closes when the selection moves on).
+  const [openId, setOpenId] = useState<string | null>(null);
+  const opened = p.mobile && openId != null && openId === selected ? openId : null;
+  const idsKey = `${options.map((o) => `${o.id}${o.photo ? "p" : ""}`).join(",")}|${anchors.map((a) => a.id).join(",")}|${selected}|${p.mobile}|${opened}`;
   const routeKey = routes.filter((r) => r.selected).map((r) => r.key).join(",");
   useEffect(() => {
     if (!map || zoom == null) return;
@@ -315,19 +412,22 @@ export default function MapView(p: Props) {
     const selAt = sel ? px(sel.location) : undefined;
     const items: SideItem[] = [];
     const markers: { id: string; at: Pt; r: number }[] = [];
+    const M = MOBILE_GEO;
     for (const o of options) {
-      const at = px(o.location), isSel = o.id === selected;
-      const hub = isSel ? GEO.hub.sel : GEO.hub.unsel;
-      const w = isSel ? GEO.sel.w : tabWidth(o), h = isSel ? GEO.sel.hPhoto : GEO.unsel.h;
-      const reach = hub / 2 - GEO.tuck;
+      const at = px(o.location), isSel = o.id === selected, isOpen = o.id === opened;
+      const hub = p.mobile ? (isSel ? M.hub.sel : M.hub.unsel) : isSel ? GEO.hub.sel : GEO.hub.unsel;
+      const w = p.mobile ? (isOpen ? M.home.open.w : mobileHomeWidth(o.title, isSel)) : isSel ? GEO.sel.w : tabWidth(o);
+      const h = p.mobile ? (isOpen ? M.home.open.h : isSel ? M.home.hSel : M.home.h) : isSel ? GEO.sel.hPhoto : GEO.unsel.h;
+      const reach = hub / 2 - (p.mobile ? M.tuck : GEO.tuck);
       items.push({ id: `o:${o.id}`, at, priority: isSel ? 0 : 2, prefer: ["right", "left", "below", "above"], boxes: Object.fromEntries(SIDES.map((s) => [s, dockedBox(at, w, h, s, reach)])) as SideItem["boxes"] });
       markers.push({ id: `o:${o.id}`, at, r: hub / 2 + 4 });
     }
     for (const a of anchors) {
       const at = px(a.location);
-      const ah = sel ? GEO.anchor.hFare : GEO.anchor.hTab, aw = sel ? GEO.anchor.w : Math.min(GEO.anchor.w, 40 + 7.5 * (a.name.length + (suburbOf(a)?.length ?? 0)));
+      const ah = p.mobile ? (sel ? M.anchor.hTime : M.anchor.h) : sel ? GEO.anchor.hFare : GEO.anchor.hTab;
+      const aw = p.mobile ? mobileAnchorWidth(a.name, !!sel) : sel ? GEO.anchor.w : Math.min(GEO.anchor.w, 40 + 7.5 * (a.name.length + (suburbOf(a)?.length ?? 0)));
       items.push({ id: `a:${a.id}`, at, priority: 1, prefer: awayFrom(at, selAt), boxes: Object.fromEntries(SIDES.map((s) => [s, dockedBox(at, aw, ah, s, 0)])) as SideItem["boxes"] });
-      markers.push({ id: `a:${a.id}`, at, r: GEO.anchor.marker / 2 + 4 });
+      markers.push({ id: `a:${a.id}`, at, r: (p.mobile ? M.anchor.marker : GEO.anchor.marker) / 2 + 4 });
     }
     const routePts = routes.filter((r) => r.selected).flatMap((r) => r.pts.map(px));
     const raf = requestAnimationFrame(() => setSides((prev) => chooseSides(items, markers, routePts, prev)));
@@ -346,6 +446,7 @@ export default function MapView(p: Props) {
   const summary = useMemo(() => new Map(rows.map((r) => [r.option.id, r])), [rows]);
   const selRow = selected ? summary.get(selected) : undefined;
   const growKey = `${selected}:${p.epoch}`;
+  const toggleOpen = useCallback((id: string) => setOpenId((cur) => (cur === id ? null : id)), []);
 
   return (
     <GoogleMap
@@ -401,6 +502,7 @@ export default function MapView(p: Props) {
               instant={p.instant}
               delay={p.stepped && !p.instant ? ai * STEP_GAP : 0}
               drawMs={p.stepped && !p.instant ? STEP_DRAW : DRAW_MS}
+              mobile={p.mobile}
               onClick={p.onAnchorClick}
             />
           </HtmlMarker>
@@ -409,6 +511,19 @@ export default function MapView(p: Props) {
 
       {options.map((o, i) => (
         <HtmlMarker key={o.id} position={o.location} zIndex={o.id === selected ? 40 : 30}>
+          {p.mobile ? (
+            <MobileHomeMarker
+              o={o}
+              letter={letterOf(i)}
+              selected={o.id === selected}
+              open={o.id === opened}
+              side={sides[`o:${o.id}`] ?? "right"}
+              onSelect={p.onSelect}
+              onToggle={toggleOpen}
+              onDetail={p.onDetail}
+              onPhotos={p.onPhotos}
+            />
+          ) : (
           <HomeMarker
             o={o}
             letter={letterOf(i)}
@@ -419,6 +534,7 @@ export default function MapView(p: Props) {
             onDetail={p.onDetail}
             onPhotos={p.onPhotos}
           />
+          )}
         </HtmlMarker>
       ))}
     </GoogleMap>

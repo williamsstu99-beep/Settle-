@@ -14,6 +14,7 @@ import { homeFacts, listingUrl } from "@/core/home";
 import { HomeForm, type HomeDraft } from "./HomeForm";
 import { PlaceSearch } from "./PlaceSearch";
 import { DRAW_MS, STEP_DRAW, STEP_GAP } from "./RouteLayer";
+import { NARROW_PX, readPref, resolveView, togglePref, type ViewPref } from "@/core/view";
 
 const MapView = dynamic(() => import("./MapView"), { ssr: false });
 
@@ -26,6 +27,7 @@ const MODES: Mode[] = ["transit", "drive", "bike", "walk"];
 const timeZone = () => Intl.DateTimeFormat().resolvedOptions().timeZone;
 const hasMapsKey = !!API_KEY;
 const STEP_KEY = "settle.step.v1";
+const VIEW_KEY = "settle.view.v1";
 /** How long Compare stays on each home: card grows, its routes draw (all together, or one place at a time), short hold. */
 const stepMs = (stepped: boolean, places: number) => 300 + (stepped ? Math.max(0, places - 1) * STEP_GAP + STEP_DRAW : DRAW_MS) + 600;
 
@@ -83,6 +85,23 @@ export default function SettleApp() {
   const [hasRun, setHasRun] = useState(false);
   const [epoch, setEpoch] = useState(0); // new value = redraw every route (Compare / Replay)
   const [reduceMotion] = useState(() => matchMedia("(prefers-reduced-motion: reduce)").matches);
+  // Mobile mode: on by itself on narrow screens; the header toggle can force either view (remembered here).
+  const [viewPref, setViewPref] = useState<ViewPref>(() => {
+    try { return readPref(localStorage.getItem(VIEW_KEY)); } catch { return "auto"; }
+  });
+  const [narrow, setNarrow] = useState(() => matchMedia(`(max-width: ${NARROW_PX}px)`).matches);
+  useEffect(() => {
+    const mq = matchMedia(`(max-width: ${NARROW_PX}px)`);
+    const on = () => setNarrow(mq.matches);
+    mq.addEventListener("change", on);
+    return () => mq.removeEventListener("change", on);
+  }, []);
+  const mobile = resolveView(viewPref, narrow) === "mobile";
+  const toggleView = () => {
+    const next = togglePref(viewPref, narrow);
+    setViewPref(next);
+    try { if (next === "auto") localStorage.removeItem(VIEW_KEY); else localStorage.setItem(VIEW_KEY, next); } catch {}
+  };
   // Step-through reveal (one place's route at a time). On by default; your choice is remembered.
   const [stepped, setStepped] = useState(() => {
     try { return localStorage.getItem(STEP_KEY) !== "off"; } catch { return true; }
@@ -650,7 +669,7 @@ export default function SettleApp() {
   );
 
   const body = (
-    <div className="app">
+    <div className={`app${mobile ? " mobile" : ""}`}>
       <aside className="side">
         <div className="head">
           <h1 className="brand"><Link href="/" aria-label="Settle home"><Wordmark size={22} mark={28} /></Link></h1>
@@ -659,6 +678,9 @@ export default function SettleApp() {
               {running ? "Skip" : hasRun ? "Replay" : "Compare"}
             </button>
             <button className="btn" onClick={share} disabled={!options.length && !anchors.length}>{copied ? "Copied" : "Share"}</button>
+            <button className="btn iconbtn" onClick={toggleView} aria-label={mobile ? "Switch to the desktop view" : "Switch to the mobile view"} title={mobile ? "Desktop view" : "Mobile view"}>
+              <Icon name={mobile ? "desktop" : "phone"} size={16} />
+            </button>
           </div>
         </div>
         <div className="side-scroll">
@@ -735,15 +757,16 @@ export default function SettleApp() {
               onSelect={(id) => selectHome(id)}
               onAnchorClick={onAnchorClick}
               onMapClick={onMapClick}
+              mobile={mobile}
             />
-            {adding && <div className="droptip">Click the map to drop a pin · or search on the left</div>}
+            {adding && <div className="droptip">{mobile ? "Tap the map to drop a pin" : "Click the map to drop a pin · or search on the left"}</div>}
             <label className="steptoggle" title="Draw a home's routes one place at a time">
               <input type="checkbox" checked={stepped} onChange={(e) => setStepped(e.target.checked)} />
               <span aria-hidden="true" />
-              Step through routes
+              {mobile ? "Step through" : "Step through routes"}
             </label>
             <button className="fitbtn" onClick={() => setFitKey(newId())} aria-label="Show every home, place and route">
-              <Icon name="expand" size={15} />Show all
+              <Icon name="expand" size={15} />{mobile ? "All" : "Show all"}
             </button>
           </>
         ) : (
