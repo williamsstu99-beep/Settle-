@@ -56,3 +56,14 @@ describe("mode detail lines", () => {
     expect(suburbOf({})).toBeUndefined();
   });
 });
+
+import { tripLabel } from "./describe";
+
+describe("trip labels", () => {
+  it("names trips by where they start and end", () => {
+    expect(tripLabel({ kind: "own", anchor: { name: "Gym" } })).toBe("Gym");
+    expect(tripLabel({ kind: "first", anchor: { name: "Gym" } })).toBe("Home → Gym");
+    expect(tripLabel({ kind: "chain", anchor: { name: "Work" }, prev: { name: "Gym" } })).toBe("Gym → Work");
+    expect(tripLabel({ kind: "back", anchor: { name: "Home" }, prev: { name: "Work" } })).toBe("Work → Home");
+  });
+});

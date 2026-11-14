@@ -1,18 +1,23 @@
+import { sharedTrip, tripsFor, type Day, type Trip } from "./day";
 import type { Anchor, Leg, Mode, Option, Time } from "./types";
 
 export const legKey = (optionId: string, anchorId: string, mode: string) => `${optionId}|${anchorId}|${mode}`;
 
 export const pairKey = (optionId: string, anchorId: string) => `${optionId}|${anchorId}`;
 
-/** Per home → place mode choices that differ from the place's default. */
+/** Per trip mode choices that differ from the default, keyed `${from}|${to}` (home → place is `${optionId}|${anchorId}`). */
 export type Overrides = Record<string, Mode>;
 
 export const effectiveMode = (overrides: Overrides, optionId: string, a: Anchor): Mode => overrides[pairKey(optionId, a.id)] ?? a.mode;
 
+/** A trip's mode: its override, else its default (the destination anchor's usual way). */
+export const tripMode = (overrides: Overrides, t: Pick<Trip, "from" | "to" | "defaultMode">): Mode => overrides[pairKey(t.from, t.to)] ?? t.defaultMode;
+
 export const WALKABLE_MIN = 15;
 
-export type LegView = {
-  anchor: Anchor;
+export type LegView = Trip & {
+  /** True for stop → stop trips, which are the same from every home. */
+  shared: boolean;
   mode: Mode;
   overridden: boolean;
   /** Minutes for every mode we know about (route time preferred over the batch estimate). */
@@ -25,8 +30,8 @@ export type LegView = {
 
 export type OptionSummary = {
   option: Option;
-  legs: LegView[]; // in anchor order
-  /** Return trip to every place once, in minutes. Null until every selected mode has a time. */
+  legs: LegView[]; // in trip order: the day's stops, then anchors on their own
+  /** Minutes for the whole day (own trips counted there and back). Used for ranking, not shown. Null until every trip has a time. */
   dailyMinutes: number | null;
   leastTravel: boolean;
 };
@@ -34,7 +39,7 @@ export type OptionSummary = {
 export type Comparison = {
   /** Sorted by least daily travel; homes without a total keep their list order at the end. */
   rows: OptionSummary[];
-  /** Fastest selected-mode minutes per place across homes (null when there's nothing to compare). */
+  /** Fastest selected-mode minutes per trip across homes (null when there's nothing to compare, or the trip is shared). */
   fastest: (number | null)[];
 };
 
@@ -49,36 +54,39 @@ function known(times: Map<string, Time>, legs: Map<string, Leg>, optionId: strin
 }
 
 /**
- * Pure comparison: each home against each place, in the mode chosen for that
- * pair. Times come from the route when we have it, otherwise the batch estimate.
+ * Pure comparison: each home against each place (or each stop of the day), in
+ * the mode chosen for that trip. Times come from the route when we have it,
+ * otherwise the batch estimate.
  */
-export function compare(options: Option[], anchors: Anchor[], legs: Map<string, Leg>, times: Map<string, Time> = new Map(), overrides: Overrides = {}): Comparison {
+export function compare(options: Option[], anchors: Anchor[], legs: Map<string, Leg>, times: Map<string, Time> = new Map(), overrides: Overrides = {}, day?: Day | null): Comparison {
   const rows: OptionSummary[] = options.map((option) => {
-    const ls = anchors.map((a): LegView => {
-      const mode = effectiveMode(overrides, option.id, a);
+    const ls = tripsFor(option, anchors, day).map((t): LegView => {
+      const mode = tripMode(overrides, t);
       const byMode: LegView["byMode"] = {};
       for (const m of MODES) {
-        const k = known(times, legs, option.id, a.id, m);
+        const k = known(times, legs, t.from, t.to, m);
         if (k) byMode[m] = k.minutes;
       }
-      const sel = known(times, legs, option.id, a.id, mode);
+      const sel = known(times, legs, t.from, t.to, mode);
       const walk = byMode.walk;
       return {
-        anchor: a,
+        ...t,
+        shared: sharedTrip(t),
         mode,
-        overridden: mode !== a.mode,
+        overridden: mode !== t.defaultMode,
         byMode,
         minutes: sel ? sel.minutes : undefined,
         meters: sel?.meters,
-        leg: legs.get(legKey(option.id, a.id, mode)),
+        leg: legs.get(legKey(t.from, t.to, mode)),
         walkable: mode !== "walk" && walk != null && walk <= WALKABLE_MIN,
       };
     });
     const complete = ls.length > 0 && ls.every((l) => typeof l.minutes === "number");
-    return { option, legs: ls, dailyMinutes: complete ? ls.reduce((s, l) => s + 2 * (l.minutes as number), 0) : null, leastTravel: false };
+    return { option, legs: ls, dailyMinutes: complete ? ls.reduce((s, l) => s + (l.kind === "own" ? 2 : 1) * (l.minutes as number), 0) : null, leastTravel: false };
   });
 
-  const fastest = anchors.map((_, i) => {
+  const fastest = (rows[0]?.legs ?? []).map((l, i) => {
+    if (l.shared) return null;
     const mins = rows.map((r) => r.legs[i].minutes).filter((m): m is number => typeof m === "number");
     return rows.length > 1 && mins.length ? Math.min(...mins) : null;
   });

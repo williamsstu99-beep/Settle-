@@ -81,3 +81,10 @@ export function suburbOf(a: Pick<Anchor, "address">): string | undefined {
   if (!parts?.length) return undefined;
   return parts.length > 2 ? parts[1] : parts[0];
 }
+
+/** A trip's name in the panel: "Gym" for a trip from home, "Gym → Work" between stops, "Work → Home" for the trip back. */
+export function tripLabel(t: { kind: string; anchor: { name: string }; prev?: { name: string } }): string {
+  if (t.kind === "chain" || t.kind === "back") return `${t.prev?.name ?? "Home"} → ${t.anchor.name}`;
+  if (t.kind === "first") return `Home → ${t.anchor.name}`;
+  return t.anchor.name;
+}

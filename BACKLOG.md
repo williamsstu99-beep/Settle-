@@ -8,6 +8,7 @@ Budget: **Google Maps Platform max US$50/month** beyond the free allowances.
 - **Hero screenshot:** a real app screenshot of a listing with photos at `public/landing/hero.png` (~1200×1040). The owner provides it.
 
 ## Open decisions
+- **Day planner on the map:** check on a Vercel preview with real Google that chained routes, the trip back home (ink line) and step-through look right.
 - **Launch plan:** audience, timing and domain are not decided yet.
 
 ## Parked (later)
@@ -19,7 +20,9 @@ Budget: **Google Maps Platform max US$50/month** beyond the free allowances.
 - **Cards covering routes** (parked by the owner, keep; the mobile work may settle part of it): the selected property card and the anchor cards can sit on top of route lines.
   - Options: A) shrink the map card and put details in the panel; B) fade cards while a route draws; C) let cards be dragged; D) make the map card tiny (name + price) and move the rest to the panel.
   - Suggested: D + A. Not decided.
-- **"My day" planner:** chain stops (home → work → gym → partner's → home) with times, a timeline per property, and "Along the way" stops built in. Landing option C on the design canvas shows the idea.
+- **Day planner, next steps:** depart times per day (the trip home at 5pm, not 8am; weekends), a timeline view per property, "Along the way" stops added into the day, and a landing section showing days.
+- **Day total:** not shown (no per-day totals rule). Revisit if people ask for "Day: 54 min" once trips are chained.
+- **Share links and stop → stop mode choices:** share links keep days but not mode overrides on stop → stop trips; add if it matters.
 - **Optimise:** suggest the fastest mode per anchor.
 - **Accounts + sync:** so saved properties and photos follow you across devices (would need Supabase or similar, plus image storage). The free version stays login-free.
 - **"Paste a listing":** paste the post text or a screenshot (e.g. from a Facebook group) and AI extracts the address, rent, rooms and photos. There's no Facebook API and no scraping.
@@ -29,6 +32,7 @@ Budget: **Google Maps Platform max US$50/month** beyond the free allowances.
 - **Vercel Pro:** needed before charging money (Hobby is non-commercial).
 
 ## Done
+- Saved days: drag life anchors into visiting order to route them as one trip (home → stops → back home), the same day applied to every property; "Leave out" keeps an anchor as its own trip; several named days, saved locally and in share links. Matrix requests trimmed to unknown trips and modes.
 - #1–#3: Next.js app, Google Routes + TradeMe server routes, key setup fixes and plain-English errors.
 - #4–#9: one-home-at-a-time Compare, per-leg modes, map cards with hubs and tabbed anchor cards, stable card placement, lighter cards, deselect.
 - #10: step-through routes (toggle), drive by default, bolder anchor tabs, chevrons, "Along the way" suggestions.

@@ -4,16 +4,19 @@ import { APIProvider } from "@vis.gl/react-google-maps";
 import dynamic from "next/dynamic";
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { compare, effectiveMode, formatPrice, legKey, pairKey, type LegView, type OptionSummary } from "@/core/compare";
-import { anchorColor, decodePlan, encodePlan, EXAMPLE_PLAN, letterOf, migratePlan, MAX_ANCHORS, MAX_OPTIONS, newId, nextAnchorColor, type Plan } from "@/core/plan";
+import { compare, formatPrice, legKey, pairKey, tripMode, type LegView, type OptionSummary } from "@/core/compare";
+import { dayStops, MAX_DAYS, newDayName, pruneDays, reorderDay, toggleSkip, tripsFor, type Day, type Trip } from "@/core/day";
+import { activeDay, anchorColor, decodePlan, encodePlan, EXAMPLE_PLAN, letterOf, migratePlan, MAX_ANCHORS, MAX_OPTIONS, newId, nextAnchorColor, type Plan } from "@/core/plan";
 import type { Anchor, LatLng, Leg, Mode, Option, Time } from "@/core/types";
 import type { AlongResult } from "@/server/places";
 import { Icon, MODE_LABEL } from "./icons";
 import { Wordmark } from "./Logo";
 import { homeFacts, listingUrl } from "@/core/home";
+import { tripLabel } from "@/core/describe";
 import { HomeForm, type HomeDraft } from "./HomeForm";
 import { PlaceSearch } from "./PlaceSearch";
 import { DRAW_MS, STEP_DRAW, STEP_GAP } from "./RouteLayer";
+import { useReorder } from "./useReorder";
 import { NARROW_PX, readPref, resolveView, togglePref, type ViewPref } from "@/core/view";
 
 const MapView = dynamic(() => import("./MapView"), { ssr: false });
@@ -118,7 +121,7 @@ export default function SettleApp() {
   const [error, setError] = useState<string | null>(null);
   const [legErrors, setLegErrors] = useState<Record<string, string>>({});
   // "Along the way": stops (any category) on a selected home's route to one of your places.
-  const [along, setAlong] = useState<{ optionId: string; anchorId: string; query: string; loading: boolean; results: AlongResult[]; error?: string } | null>(null);
+  const [along, setAlong] = useState<{ optionId: string; trip: string; query: string; loading: boolean; results: AlongResult[]; error?: string } | null>(null);
   const [alongText, setAlongText] = useState("");
   const [hoverStop, setHoverStop] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
@@ -126,6 +129,8 @@ export default function SettleApp() {
 
   const { anchors, options } = plan;
   const overrides = useMemo(() => plan.overrides ?? {}, [plan.overrides]);
+  const days = useMemo(() => plan.days ?? [], [plan.days]);
+  const day = useMemo(() => activeDay({ days, dayId: plan.dayId }), [days, plan.dayId]);
   const letter = useCallback((id: string) => letterOf(Math.max(0, options.findIndex((o) => o.id === id))), [options]);
   const swatch = (a: Anchor) => anchorColor(a, anchors.indexOf(a));
   const swatchStyle = (a: Anchor) => ({ "--a": swatch(a).marker, "--ar": swatch(a).route, "--at": swatch(a).tab } as React.CSSProperties);
@@ -140,7 +145,10 @@ export default function SettleApp() {
 
   const update = (fn: (p: Plan) => Plan) => setPlan((p) => ({ ...fn(p), example: false }));
 
-  const cmp = useMemo(() => compare(options, anchors, legs, times, overrides), [options, anchors, legs, times, overrides]);
+  const cmp = useMemo(() => compare(options, anchors, legs, times, overrides, day), [options, anchors, legs, times, overrides, day]);
+  /** Trips per home for the day shown (stops in order, then anchors on their own). */
+  const trips = useMemo(() => new Map(options.map((o) => [o.id, tripsFor(o, anchors, day)])), [options, anchors, day]);
+  const tripCount = trips.values().next().value?.length ?? anchors.length;
 
   // Exactly one home is always selected: the one you picked, the one the sequence is on, or the best.
   // Nothing is selected until you pick a home (or Compare finishes on the best one).
@@ -149,20 +157,33 @@ export default function SettleApp() {
   /* ---------- times for the other modes (mode buttons), selected home only ---------- */
   // Route lines already give the chosen mode's time for every home, so the matrix is only
   // asked for the selected home and only for modes that aren't known yet. Cached per pair.
+  // Trips from the same origin go in one matrix request (home → its trips, or a stop → the next).
   const timesWanted = useMemo(() => {
-    const o = options.find((x) => x.id === selected);
-    if (!o || seq || !anchors.length || !hasMapsKey) return null; // not while Compare steps through every home
-    const modes = MODES.filter((m) => anchors.some((a) => !legs.has(legKey(o.id, a.id, m)) && !times.has(legKey(o.id, a.id, m))));
-    return modes.length ? { o, modes } : null;
-  }, [selected, seq, options, anchors, legs, times]);
+    const ts = selected ? trips.get(selected) : undefined;
+    if (!ts?.length || seq || !hasMapsKey) return null; // not while Compare steps through every home
+    const groups = new Map<string, { origin: Trip["origin"]; dests: Trip[] }>();
+    for (const t of ts) {
+      const g = groups.get(t.from) ?? { origin: t.origin, dests: [] };
+      g.dests.push(t);
+      groups.set(t.from, g);
+    }
+    // Only modes and trips still unknown; a trip's own mode comes with its route line.
+    const missing = (t: Trip, m: Mode) => m !== tripMode(overrides, t) && !legs.has(legKey(t.from, t.to, m)) && !times.has(legKey(t.from, t.to, m));
+    for (const [from, g] of groups) {
+      const modes = MODES.filter((m) => g.dests.some((t) => missing(t, m)));
+      const dests = g.dests.filter((t) => modes.some((m) => missing(t, m)));
+      if (modes.length) return { from, origin: g.origin, dests, modes };
+    }
+    return null;
+  }, [selected, seq, trips, overrides, legs, times]);
   const timesInflight = useRef(false);
   useEffect(() => {
     if (!timesWanted || timesInflight.current) return;
     timesInflight.current = true;
     postJson<{ times: Time[] }>("/api/times", {
       timeZone: timeZone(),
-      options: [{ id: timesWanted.o.id, location: timesWanted.o.location }],
-      anchors: anchors.map((a) => ({ id: a.id, location: a.location })),
+      options: [{ id: timesWanted.from, location: timesWanted.origin }],
+      anchors: timesWanted.dests.map((t) => ({ id: t.to, location: t.destination })),
       modes: timesWanted.modes,
     })
       .then((j) => {
@@ -176,21 +197,23 @@ export default function SettleApp() {
       .finally(() => {
         timesInflight.current = false;
       });
-  }, [timesWanted, anchors]);
+  }, [timesWanted]);
 
   /* ---------- "5–9 min at peak" for the selected home's drives only (two requests each) ---------- */
   const peakAsked = useRef(new Set<string>());
   useEffect(() => {
-    const o = options.find((x) => x.id === selected);
-    if (!o || seq || !hasMapsKey) return;
-    const want = anchors
-      .map((a) => ({ a, leg: legs.get(legKey(o.id, a.id, "drive")) }))
-      .filter(({ a, leg }) => leg?.status === "ok" && !leg.peak && !peakAsked.current.has(legKey(o.id, a.id, "drive")));
+    const ts = selected ? trips.get(selected) : undefined;
+    if (!ts || seq || !hasMapsKey) return;
+    const want = ts
+      .filter((t) => tripMode(overrides, t) === "drive")
+      .map((t) => ({ t, leg: legs.get(legKey(t.from, t.to, "drive")) }))
+      .filter(({ t, leg }) => leg?.status === "ok" && !leg.peak && !peakAsked.current.has(legKey(t.from, t.to, "drive")))
+      .slice(0, 8);
     if (!want.length) return;
-    for (const { a } of want) peakAsked.current.add(legKey(o.id, a.id, "drive"));
+    for (const { t } of want) peakAsked.current.add(legKey(t.from, t.to, "drive"));
     postJson<{ peaks: { optionId: string; anchorId: string; peak: [number, number] | null }[] }>("/api/peak", {
       timeZone: timeZone(),
-      pairs: want.map(({ a }) => ({ optionId: o.id, anchorId: a.id, origin: o.location, destination: a.location })),
+      pairs: want.map(({ t }) => ({ optionId: t.from, anchorId: t.to, origin: t.origin, destination: t.destination })),
     })
       .then((j) => {
         setLegs((prev) => {
@@ -203,22 +226,21 @@ export default function SettleApp() {
         });
       })
       .catch(() => {}); // optional detail: the card just says "Drive"
-  }, [selected, seq, options, anchors, legs]);
+  }, [selected, seq, trips, overrides, legs]);
 
   /* ---------- route lines, only for the mode chosen per pair: the selected home, or every home for Compare ---------- */
   // Every home's routes are shown (grey for homes that aren't selected), so fetch them all; results are cached.
-  const scope = options;
-  const legsMissing = useMemo(
-    () =>
-      hasMapsKey
-        ? scope.flatMap((o) =>
-            anchors
-              .map((a) => ({ o, a, mode: effectiveMode(overrides, o.id, a) }))
-              .filter(({ o, a, mode }) => !legs.has(legKey(o.id, a.id, mode)) && !legErrors[pairKey(o.id, a.id)]),
-          )
-        : [],
-    [scope, anchors, overrides, legs, legErrors],
-  );
+  // Stop → stop trips are the same from every home, so they're asked for once.
+  const legsMissing = useMemo(() => {
+    if (!hasMapsKey) return [];
+    const seen = new Set<string>();
+    return [...trips.values()].flat().flatMap((t) => {
+      const mode = tripMode(overrides, t), k = legKey(t.from, t.to, mode);
+      if (seen.has(k) || legs.has(k) || legErrors[pairKey(t.from, t.to)]) return [];
+      seen.add(k);
+      return [{ t, mode }];
+    }).slice(0, 48);
+  }, [trips, overrides, legs, legErrors]);
   const legsInflight = useRef(false);
   const previousMode = useRef<Record<string, Mode>>({});
   useEffect(() => {
@@ -227,7 +249,7 @@ export default function SettleApp() {
     const batch = legsMissing;
     postJson<{ legs: Leg[] }>("/api/routes", {
       timeZone: timeZone(),
-      pairs: batch.map(({ o, a, mode }) => ({ optionId: o.id, anchorId: a.id, mode, origin: o.location, destination: a.location })),
+      pairs: batch.map(({ t, mode }) => ({ optionId: t.from, anchorId: t.to, mode, origin: t.origin, destination: t.destination })),
     })
       .then((j) => {
         setLegs((prev) => {
@@ -238,24 +260,24 @@ export default function SettleApp() {
       })
       .catch((e: Error) => {
         // A single switched route that fails goes back to its previous mode; anything else is shown above the list.
-        const switched = batch.filter(({ o, a }) => previousMode.current[pairKey(o.id, a.id)]);
+        const switched = batch.filter(({ t }) => previousMode.current[pairKey(t.from, t.to)]);
         if (switched.length && switched.length === batch.length) {
           setPlan((p) => {
             const ov = { ...(p.overrides ?? {}) };
-            for (const { o, a } of switched) {
-              const prev = previousMode.current[pairKey(o.id, a.id)];
-              if (prev === a.mode) delete ov[pairKey(o.id, a.id)];
-              else ov[pairKey(o.id, a.id)] = prev;
+            for (const { t } of switched) {
+              const prev = previousMode.current[pairKey(t.from, t.to)];
+              if (prev === t.defaultMode) delete ov[pairKey(t.from, t.to)];
+              else ov[pairKey(t.from, t.to)] = prev;
             }
             return { ...p, overrides: ov };
           });
-          setLegErrors((errs) => ({ ...errs, ...Object.fromEntries(switched.map(({ o, a }) => [pairKey(o.id, a.id), "Couldn't get that route. Try again."])) }));
+          setLegErrors((errs) => ({ ...errs, ...Object.fromEntries(switched.map(({ t }) => [pairKey(t.from, t.to), "Couldn't get that route. Try again."])) }));
         } else {
           setError(e.message);
         }
       })
       .finally(() => {
-        for (const { o, a } of batch) delete previousMode.current[pairKey(o.id, a.id)];
+        for (const { t } of batch) delete previousMode.current[pairKey(t.from, t.to)];
         legsInflight.current = false;
       });
   }, [legsMissing]);
@@ -280,9 +302,9 @@ export default function SettleApp() {
         setSelectedState(seq.order[seq.i]);
         setSeq(null);
       }
-    }, stepMs(stepped, anchors.length));
+    }, stepMs(stepped, tripCount));
     return () => clearTimeout(t);
-  }, [seq, stepped, anchors.length]);
+  }, [seq, stepped, tripCount]);
 
   /* ---------- actions ---------- */
   /** Create the place from the draft. Its name is what you typed (or the icon's label), never the address. */
@@ -303,18 +325,19 @@ export default function SettleApp() {
     update((p) => ({ ...p, options: [...p.options, o] }));
     setFitKey(newId());
   };
-  const searchAlong = async (o: Option, a: Anchor, query: string) => {
-    const leg = legs.get(legKey(o.id, a.id, effectiveMode(overrides, o.id, a)));
+  const searchAlong = async (o: Option, t: Trip, query: string) => {
+    const trip = pairKey(t.from, t.to);
+    const leg = legs.get(legKey(t.from, t.to, tripMode(overrides, t)));
     const q = query.trim();
     if (q.length < 2) return;
     if (leg?.status !== "ok" || !leg.polyline) {
-      setAlong({ optionId: o.id, anchorId: a.id, query: q, loading: false, results: [], error: "That route is still loading. Try again in a moment." });
+      setAlong({ optionId: o.id, trip, query: q, loading: false, results: [], error: "That route is still loading. Try again in a moment." });
       return;
     }
-    setAlong({ optionId: o.id, anchorId: a.id, query: q, loading: true, results: [] });
+    setAlong({ optionId: o.id, trip, query: q, loading: true, results: [] });
     try {
-      const j = await postJson<{ results: AlongResult[] }>("/api/along", { query: q, polyline: leg.polyline, origin: o.location, mode: leg.mode, baseMinutes: leg.minutes ?? 0 });
-      setAlong((cur) => (cur && cur.query === q && cur.optionId === o.id && cur.anchorId === a.id ? { ...cur, loading: false, results: j.results } : cur));
+      const j = await postJson<{ results: AlongResult[] }>("/api/along", { query: q, polyline: leg.polyline, origin: t.origin, mode: leg.mode, baseMinutes: leg.minutes ?? 0 });
+      setAlong((cur) => (cur && cur.query === q && cur.optionId === o.id && cur.trip === trip ? { ...cur, loading: false, results: j.results } : cur));
     } catch (e) {
       setAlong((cur) => (cur && cur.query === q ? { ...cur, loading: false, error: (e as Error).message } : cur));
     }
@@ -327,7 +350,7 @@ export default function SettleApp() {
     setAlong(null);
   };
   const removeOption = (id: string) => {
-    update((p) => ({ ...p, options: p.options.filter((x) => x.id !== id), overrides: Object.fromEntries(Object.entries(p.overrides ?? {}).filter(([k]) => !k.startsWith(`${id}|`))) }));
+    update((p) => ({ ...p, options: p.options.filter((x) => x.id !== id), overrides: Object.fromEntries(Object.entries(p.overrides ?? {}).filter(([k]) => !k.startsWith(`${id}|`) && !k.endsWith(`|${id}`))) }));
     if (selectedState === id) setSelectedState(null);
   };
   const fetchListing = async (url: string): Promise<Option> => {
@@ -347,10 +370,12 @@ export default function SettleApp() {
     const moved = before && (before.location.lat !== d.location.lat || before.location.lng !== d.location.lng);
     update((p) => ({ ...p, options: p.options.map((o) => (o.id === id ? { ...d, id } : o)) }));
     if (moved) {
-      const keep = <T,>(m: Map<string, T>) => new Map([...m].filter(([k]) => !k.startsWith(`${id}|`)));
+      // Trips from this home (`id|…`) and back to it (`@stop|id|mode`).
+      const mine = (k: string) => k.startsWith(`${id}|`) || k.split("|")[1] === id;
+      const keep = <T,>(m: Map<string, T>) => new Map([...m].filter(([k]) => !mine(k)));
       setLegs(keep);
       setTimes(keep);
-      peakAsked.current = new Set([...peakAsked.current].filter((k) => !k.startsWith(`${id}|`)));
+      peakAsked.current = new Set([...peakAsked.current].filter((k) => !mine(k)));
       setFitKey(newId());
     }
     setHomeForm("closed");
@@ -399,9 +424,9 @@ export default function SettleApp() {
       setCollapsed(false);
     }
   };
-  const chooseMode = (o: Option, a: Anchor, mode: Mode) => {
-    const k = pairKey(o.id, a.id);
-    const current = effectiveMode(overrides, o.id, a);
+  const chooseMode = (t: Trip, mode: Mode) => {
+    const k = pairKey(t.from, t.to);
+    const current = tripMode(overrides, t);
     if (mode === current) return;
     previousMode.current[k] = current;
     setLegErrors((errs) => {
@@ -411,11 +436,33 @@ export default function SettleApp() {
     });
     update((p) => {
       const ov = { ...(p.overrides ?? {}) };
-      if (mode === a.mode) delete ov[k];
+      if (mode === t.defaultMode) delete ov[k];
       else ov[k] = mode;
       return { ...p, overrides: ov };
     });
   };
+
+  /* ---------- your day: anchors in order, as one trip ---------- */
+  const setDay = (fn: (d: Day) => Day) => update((p) => ({ ...p, days: (p.days ?? []).map((d) => (d.id === p.dayId ? fn(d) : d)) }));
+  /** Start a new day from the anchors in the given order (all of them in it, back home at the end). */
+  const newDay = (order: string[] = anchors.map((a) => a.id)) => {
+    if (days.length >= MAX_DAYS) return setError(`You can save up to ${MAX_DAYS} days.`);
+    const d: Day = { id: newId(), name: newDayName(days), order, skip: [], home: true };
+    update((p) => ({ ...p, days: [...(p.days ?? []), d], dayId: d.id }));
+  };
+  const chooseDay = (id: string | null) => {
+    update((p) => ({ ...p, dayId: id }));
+    setAlong(null);
+    setEpoch((e) => e + 1);
+  };
+  const deleteDay = (id: string) => update((p) => ({ ...p, days: (p.days ?? []).filter((d) => d.id !== id), dayId: p.dayId === id ? null : p.dayId }));
+  /** Dropping anchors in a new order is what plans the day: with no day yet, it starts one. */
+  const reorder = useReorder((_scope, order) => {
+    if (day) setDay((d) => reorderDay(d, order));
+    else if (days.length < MAX_DAYS) newDay(order);
+    setEpoch((e) => e + 1);
+  });
+
   const share = async () => {
     const url = `${location.origin}${location.pathname}#s=${encodePlan(plan)}`;
     try {
@@ -474,7 +521,7 @@ export default function SettleApp() {
   const modeButton = (r: OptionSummary, l: LegView, m: Mode) => {
     const mins = l.byMode[m];
     const on = l.mode === m;
-    const loading = on && r.option.id === selected && !l.leg && !legErrors[pairKey(r.option.id, l.anchor.id)];
+    const loading = on && r.option.id === selected && !l.leg && !legErrors[pairKey(l.from, l.to)];
     const walkable = m === "walk" && l.walkable;
     return (
       <button
@@ -482,8 +529,8 @@ export default function SettleApp() {
         className={`mode${on ? " on" : ""}${walkable ? " walkable" : ""}${loading ? " loading" : ""}`}
         aria-pressed={on}
         disabled={mins === null && !on}
-        onClick={() => chooseMode(r.option, l.anchor, m)}
-        title={mins === null ? `No ${MODE_LABEL[m].toLowerCase()} route` : walkable ? "Walkable: 15 min or less on foot" : m === l.anchor.mode ? "Default for this place" : undefined}
+        onClick={() => chooseMode(l, m)}
+        title={mins === null ? `No ${MODE_LABEL[m].toLowerCase()} route` : walkable ? "Walkable: 15 min or less on foot" : m === l.defaultMode ? "Usual way for this trip" : undefined}
       >
         <span className="mode-l">{MODE_LABEL[m]}</span>
         <span className="mode-t">{mins === undefined ? "…" : mins === null ? "–" : mins}</span>
@@ -492,16 +539,18 @@ export default function SettleApp() {
   };
 
   const CATEGORIES = ["Gym", "Café", "Supermarket", "School", "Childcare", "Pharmacy"];
-  const alongSection = (o: Option) => {
-    if (!anchors.length) return null;
+  const alongSection = (r: OptionSummary) => {
+    const o = r.option;
+    if (!r.legs.length) return null;
     const cur = along?.optionId === o.id ? along : null;
-    const to = anchors.find((a) => a.id === cur?.anchorId) ?? anchors[0];
+    const to = r.legs.find((l) => pairKey(l.from, l.to) === cur?.trip) ?? r.legs[0];
+    const pick = (l: LegView) => (cur?.query ? searchAlong(o, l, cur.query) : setAlong({ optionId: o.id, trip: pairKey(l.from, l.to), query: "", loading: false, results: [] }));
     return (
       <div className="along">
         <div className="along-h"><b>Along the way</b><span>stops on your trip to</span></div>
         <div className="along-to" role="group" aria-label="Search along the trip to">
-          {anchors.map((a) => (
-            <button key={a.id} aria-pressed={a.id === to.id} style={swatchStyle(a)} onClick={() => (cur?.query ? searchAlong(o, a, cur.query) : setAlong({ optionId: o.id, anchorId: a.id, query: "", loading: false, results: [] }))}>{a.name}</button>
+          {r.legs.map((l) => (
+            <button key={pairKey(l.from, l.to)} aria-pressed={l === to} style={swatchStyle(l.anchor)} title={tripLabel(l)} onClick={() => pick(l)}>{l.anchor.name}</button>
           ))}
         </div>
         <div className="along-cats">
@@ -530,6 +579,57 @@ export default function SettleApp() {
           </ol>
         )}
       </div>
+    );
+  };
+
+  /** Anchors you can drag: the day's stops, or (with no day yet) every anchor, since dragging starts a day. */
+  const stops = dayStops(anchors, day);
+  const draggableIds = (day ? stops.stops : anchors).map((a) => a.id);
+  const canDrag = anchors.length > 1 && (!!day || days.length < MAX_DAYS);
+  const grip = (scope: string, a: Anchor) =>
+    canDrag && draggableIds.includes(a.id) ? (
+      <button className="grip" {...reorder.handle(scope, a.id, draggableIds, a.name)}><Icon name="grip" size={14} /></button>
+    ) : canDrag && scope === "places" ? <span className="grip-space" aria-hidden="true" /> : null;
+  /** Put an anchor in or out of the day (out = its own trip from home). */
+  const skipButton = (a: Anchor) =>
+    day ? (
+      <button className="link daylink" onClick={() => { setDay((d) => toggleSkip(d, a.id)); setEpoch((e) => e + 1); }}>
+        {day.skip.includes(a.id) ? "Add to day" : "Leave out"}
+      </button>
+    ) : null;
+
+  const legRow = (r: OptionSummary, l: LegView, scope: string | null) => {
+    const k = pairKey(l.from, l.to);
+    const dragId = scope && l.kind !== "back" ? l.anchor.id : undefined;
+    return (
+      <div key={k} className={`leg${reorder.dragging === `${scope}:${dragId}` ? " dragging" : ""}`} style={swatchStyle(l.anchor)} data-reorder-id={dragId}>
+        <div className="leg-h">
+          {scope && l.kind !== "back" && grip(scope, l.anchor)}
+          <b className="leg-n">{day ? tripLabel(l) : l.anchor.name}</b>
+          {l.overridden && <button className="link" onClick={() => chooseMode(l, l.defaultMode)}>Reset</button>}
+          <span className="leg-t">{typeof l.minutes === "number" ? `${l.minutes} min` : l.minutes === null ? "No route" : "…"}</span>
+        </div>
+        <div className="modes" role="group" aria-label={`How you get ${day ? `from ${l.prev?.name ?? "home"} ` : ""}to ${l.anchor.name}`}>{MODES.map((m) => modeButton(r, l, m))}</div>
+        {legErrors[k] && <p className="err">{legErrors[k]}</p>}
+      </div>
+    );
+  };
+
+  /** A home's trips: the day's stops in order (draggable), the trip back, then anchors on their own. */
+  const tripList = (r: OptionSummary) => {
+    const scope = `card:${r.option.id}`;
+    const byAnchor = new Map(r.legs.filter((l) => l.kind !== "back").map((l) => [l.anchor.id, l]));
+    const ordered = reorder.order(scope, draggableIds).flatMap((id) => (byAnchor.has(id) ? [byAnchor.get(id)!] : []));
+    const back = r.legs.filter((l) => l.kind === "back");
+    const rest = r.legs.filter((l) => l.kind !== "back" && !draggableIds.includes(l.anchor.id));
+    return (
+      <>
+        {day && <div className="daynote">{day.name} · in this order{canDrag ? ", drag to change it" : ""}</div>}
+        <div data-reorder>{ordered.map((l) => legRow(r, l, canDrag ? scope : null))}</div>
+        {back.map((l) => legRow(r, l, null))}
+        {day && rest.length > 0 && <div className="daynote">On their own, from home</div>}
+        {rest.map((l) => legRow(r, l, null))}
+      </>
     );
   };
 
@@ -563,34 +663,22 @@ export default function SettleApp() {
           </span>
           {!open && (
             <span className="chips">
-              {r.legs.map((l, ai) => (
-                <span key={l.anchor.id} className={`chip${typeof l.minutes === "number" && cmp.fastest[ai] === l.minutes ? " best" : ""}`} title={`${MODE_LABEL[l.mode]}${typeof l.minutes === "number" && cmp.fastest[ai] === l.minutes ? " · fastest of your homes" : ""}`} style={swatchStyle(l.anchor)}>
-                  <span className="cn">{l.anchor.name}</span>
-                  {l.minutes === undefined ? (legErrors[pairKey(o.id, l.anchor.id)] || !hasMaps ? "–" : "…") : l.minutes === null ? "–" : `${l.minutes} min`}
-                </span>
-              ))}
+              {r.legs.map((l, i) => {
+                const best = typeof l.minutes === "number" && cmp.fastest[i] === l.minutes;
+                return (
+                  <span key={pairKey(l.from, l.to)} className={`chip${best ? " best" : ""}`} title={`${day ? `${tripLabel(l)} · ` : ""}${MODE_LABEL[l.mode]}${best ? " · fastest of your homes" : ""}`} style={swatchStyle(l.anchor)}>
+                    <span className="cn">{l.anchor.name}</span>
+                    {l.minutes === undefined ? (legErrors[pairKey(l.from, l.to)] || !hasMaps ? "–" : "…") : l.minutes === null ? "–" : `${l.minutes} min`}
+                  </span>
+                );
+              })}
             </span>
           )}
         </button>
         {open && (
           <div className="cb">
-            {r.legs.map((l) => {
-              const k = pairKey(o.id, l.anchor.id);
-              return (
-                <div key={l.anchor.id} className="leg" style={swatchStyle(l.anchor)}>
-                  <div className="leg-h">
-                    <b className="leg-n">{l.anchor.name}</b>
-                    {l.overridden && (
-                      <button className="link" onClick={() => chooseMode(o, l.anchor, l.anchor.mode)}>Reset</button>
-                    )}
-                    <span className="leg-t">{typeof l.minutes === "number" ? `${l.minutes} min` : l.minutes === null ? "No route" : "…"}</span>
-                  </div>
-                  <div className="modes" role="group" aria-label={`How you get to ${l.anchor.name}`}>{MODES.map((m) => modeButton(r, l, m))}</div>
-                  {legErrors[k] && <p className="err">{legErrors[k]}</p>}
-                </div>
-              );
-            })}
-            {alongSection(o)}
+            {tripList(r)}
+            {alongSection(r)}
             <div className="cb-foot">
               {listing ? (
                 <a className="btn dark" href={listing} target="_blank" rel="noopener noreferrer">View listing</a>
@@ -603,44 +691,92 @@ export default function SettleApp() {
     );
   };
 
+  const anchorRow = (a: Anchor, n: number | null) => (
+    <div key={a.id} data-reorder-id={draggableIds.includes(a.id) ? a.id : undefined} className={reorder.dragging === `places:${a.id}` ? "dragging" : undefined}>
+      <div className="arow-wrap">
+        {grip("places", a)}
+        <button className="prow" aria-expanded={edit === a.id} onClick={() => { setEdit(edit === a.id ? null : a.id); setAdding(false); }} style={swatchStyle(a)}>
+          <span className="bar" aria-hidden="true" />
+          <span className="t">
+            <b>{n != null && <span className="stopn">{n}</span>}{a.name}</b>
+            <span>{day && day.skip.includes(a.id) ? `Own trip from home · ${MODE_LABEL[a.mode].toLowerCase()}` : `${MODE_LABEL[a.mode]} by default`}</span>
+          </span>
+          <Icon name="chev" size={14} className="chev" />
+        </button>
+        {skipButton(a)}
+      </div>
+      {edit === a.id && (
+        <div className="edit">
+          <label className="flabel" htmlFor={`name-${a.id}`}>Name <span>shown on the map</span></label>
+          <input id={`name-${a.id}`} className="text" value={a.name} maxLength={40} onChange={(e) => patchAnchor(a.id, { name: e.target.value })} onKeyDown={(e) => e.key === "Enter" && setEdit(null)} />
+          <label className="flabel" htmlFor={`move-${a.id}`}>Address</label>
+          {a.address && <p className="hint addr">{a.address}</p>}
+          {hasMaps && (
+            <PlaceSearch id={`move-${a.id}`} placeholder="Search to change the address" onPick={(pl) => update((p) => { const nid = newId(); const swap = (id: string) => (id === a.id ? nid : id); return { ...p, anchors: p.anchors.map((x) => (x.id === a.id ? { ...x, id: nid, location: pl.location, address: pl.address ?? [pl.title, pl.subtitle].filter(Boolean).join(", ") } : x)), days: (p.days ?? []).map((d) => ({ ...d, order: d.order.map(swap), skip: d.skip.map(swap) })) }; })} />
+          )}
+          <div className="seg" role="group" aria-label="Default way to get there">
+            {MODES.map((m) => (
+              <button key={m} aria-pressed={a.mode === m} onClick={() => patchAnchor(a.id, { mode: m })}>
+                <Icon name={m} size={14} />{MODE_LABEL[m]}
+              </button>
+            ))}
+          </div>
+          <div className="edit-foot">
+            <button className="link danger" onClick={() => { update((p) => { const anchors = p.anchors.filter((x) => x.id !== a.id); return { ...p, anchors, days: pruneDays(p.days ?? [], anchors) }; }); setEdit(null); }}>Remove</button>
+            <button className="link" onClick={() => setEdit(null)}>Done</button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+
+  /** Separate trips (the default) or one of your saved days. */
+  const dayBar = anchors.length > 1 && (
+    <div className="daybar">
+      <div className="days" role="group" aria-label="How your trips are planned">
+        <button aria-pressed={!day} onClick={() => chooseDay(null)} title="Every life anchor is its own trip from home">Separate trips</button>
+        {days.map((d) => (
+          <button key={d.id} aria-pressed={d.id === day?.id} onClick={() => chooseDay(d.id)}>{d.name}</button>
+        ))}
+        {days.length < MAX_DAYS && <button className="newday" onClick={() => newDay()}><Icon name="plus" size={12} />New day</button>}
+      </div>
+      {day ? (
+        <div className="dayedit">
+          <input className="text sm" value={day.name} maxLength={30} aria-label="Name of this day" onChange={(e) => setDay((d) => ({ ...d, name: e.target.value }))} onBlur={(e) => !e.target.value.trim() && setDay((d) => ({ ...d, name: newDayName(days.filter((x) => x.id !== d.id)) }))} />
+          <button className="link danger" onClick={() => deleteDay(day.id)}>Delete day</button>
+        </div>
+      ) : (
+        <p className="hint dayhint">Drag your anchors into the order you visit them to plan a day: home, then each stop in turn.</p>
+      )}
+    </div>
+  );
+
+  const placeOrder = reorder.order("places", draggableIds);
+  const homeRow = day && stops.stops.length > 0 && (
+    <div className="arow-wrap">
+      <span className="grip-space" aria-hidden="true" />
+      <div className="prow static" style={swatchStyle({ color: "home" } as Anchor)}>
+        <span className="bar" aria-hidden="true" />
+        <span className="t">
+          <b>{day.home && <span className="stopn">{stops.stops.length + 1}</span>}Back home</b>
+          <span>{day.home ? "The trip home at the end of the day" : "Not in this day"}</span>
+        </span>
+      </div>
+      <button className="link daylink" onClick={() => setDay((d) => ({ ...d, home: !d.home }))}>{day.home ? "Leave out" : "Add to day"}</button>
+    </div>
+  );
+
   const places = (
     <>
-      <div className="sec">Life anchors · usual way to get there</div>
+      <div className="sec">{day ? "Life anchors · your day, in order" : "Life anchors · usual way to get there"}</div>
+      {dayBar}
       <div className="nav">
-        {anchors.map((a) => (
-          <div key={a.id}>
-            <button className="prow" aria-expanded={edit === a.id} onClick={() => { setEdit(edit === a.id ? null : a.id); setAdding(false); }} style={swatchStyle(a)}>
-              <span className="bar" aria-hidden="true" />
-              <span className="t">
-                <b>{a.name}</b>
-                <span>{MODE_LABEL[a.mode]} by default</span>
-              </span>
-              <Icon name="chev" size={14} className="chev" />
-            </button>
-            {edit === a.id && (
-              <div className="edit">
-                <label className="flabel" htmlFor={`name-${a.id}`}>Name <span>shown on the map</span></label>
-                <input id={`name-${a.id}`} className="text" value={a.name} maxLength={40} onChange={(e) => patchAnchor(a.id, { name: e.target.value })} onKeyDown={(e) => e.key === "Enter" && setEdit(null)} />
-                <label className="flabel" htmlFor={`move-${a.id}`}>Address</label>
-                {a.address && <p className="hint addr">{a.address}</p>}
-                {hasMaps && (
-                  <PlaceSearch id={`move-${a.id}`} placeholder="Search to change the address" onPick={(pl) => update((p) => ({ ...p, anchors: p.anchors.map((x) => (x.id === a.id ? { ...x, id: newId(), location: pl.location, address: pl.address ?? [pl.title, pl.subtitle].filter(Boolean).join(", ") } : x)) }))} />
-                )}
-                <div className="seg" role="group" aria-label="Default way to get there">
-                  {MODES.map((m) => (
-                    <button key={m} aria-pressed={a.mode === m} onClick={() => patchAnchor(a.id, { mode: m })}>
-                      <Icon name={m} size={14} />{MODE_LABEL[m]}
-                    </button>
-                  ))}
-                </div>
-                <div className="edit-foot">
-                  <button className="link danger" onClick={() => { update((p) => ({ ...p, anchors: p.anchors.filter((x) => x.id !== a.id) })); setEdit(null); }}>Remove</button>
-                  <button className="link" onClick={() => setEdit(null)}>Done</button>
-                </div>
-              </div>
-            )}
-          </div>
-        ))}
+        <div data-reorder>
+          {placeOrder.map((id) => anchors.find((a) => a.id === id)).filter((a): a is Anchor => !!a).map((a, i) => anchorRow(a, day ? i + 1 : null))}
+        </div>
+        {homeRow}
+        {day && stops.own.length > 0 && <div className="daynote">Left out · their own trips from home</div>}
+        {day && stops.own.map((a) => anchorRow(a, null))}
         {anchors.length < MAX_ANCHORS && (
           <button className="prow add" onClick={() => { setAdding(!adding); setEdit(null); }} aria-expanded={adding}>
             <span className="badge lg"><Icon name="plus" size={15} /></span>
@@ -740,9 +876,7 @@ export default function SettleApp() {
             <MapView
               anchors={anchors}
               options={options}
-              overrides={overrides}
               rows={cmp.rows}
-              legs={legs}
               selected={selected}
               epoch={epoch}
               instant={reduceMotion}
