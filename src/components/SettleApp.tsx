@@ -126,11 +126,21 @@ export default function SettleApp() {
   const [hoverStop, setHoverStop] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const [fitKey, setFitKey] = useState("init");
+  /**
+   * First-run setup: places first, then properties, each as many as you like.
+   * You move on with Next / Show on the map, never automatically.
+   */
+  const [setupState, setSetup] = useState<"places" | "homes" | null>(() => (plan.example ? null : !plan.anchors.length ? "places" : !plan.options.length ? "homes" : null));
+  /** The one trip whose other ways to travel are showing (its times load only then, to save Google calls). */
+  const [modesOpen, setModesOpen] = useState<{ optionId: string; key: string } | null>(null);
+  const sideScroll = useRef<HTMLDivElement>(null);
 
   const { anchors, options } = plan;
   const overrides = useMemo(() => plan.overrides ?? {}, [plan.overrides]);
   const days = useMemo(() => plan.days ?? [], [plan.days]);
   const day = useMemo(() => activeDay({ days, dayId: plan.dayId }), [days, plan.dayId]);
+  // No places at all (e.g. all removed) always means step 1.
+  const setup = setupState ?? (!anchors.length && !plan.example ? "places" : null);
   const letter = useCallback((id: string) => letterOf(Math.max(0, options.findIndex((o) => o.id === id))), [options]);
   const swatch = (a: Anchor) => anchorColor(a, anchors.indexOf(a));
   const swatchStyle = (a: Anchor) => ({ "--a": swatch(a).marker, "--ar": swatch(a).route, "--at": swatch(a).tab } as React.CSSProperties);
@@ -159,8 +169,9 @@ export default function SettleApp() {
   // asked for the selected home and only for modes that aren't known yet. Cached per pair.
   // Trips from the same origin go in one matrix request (home → its trips, or a stop → the next).
   const timesWanted = useMemo(() => {
-    const ts = selected ? trips.get(selected) : undefined;
-    if (!ts?.length || seq || !hasMapsKey) return null; // not while Compare steps through every home
+    // Only the trip whose modes you opened, and never while Compare steps through every home.
+    const ts = selected && modesOpen?.optionId === selected ? trips.get(selected)?.filter((t) => pairKey(t.from, t.to) === modesOpen.key) : undefined;
+    if (!ts?.length || seq || !hasMapsKey) return null;
     const groups = new Map<string, { origin: Trip["origin"]; dests: Trip[] }>();
     for (const t of ts) {
       const g = groups.get(t.from) ?? { origin: t.origin, dests: [] };
@@ -175,7 +186,7 @@ export default function SettleApp() {
       if (modes.length) return { from, origin: g.origin, dests, modes };
     }
     return null;
-  }, [selected, seq, trips, overrides, legs, times]);
+  }, [selected, seq, trips, overrides, legs, times, modesOpen]);
   const timesInflight = useRef(false);
   useEffect(() => {
     if (!timesWanted || timesInflight.current) return;
@@ -478,6 +489,19 @@ export default function SettleApp() {
     setPending(null);
     setSelectedState(null);
   };
+  /** The way out: back to the overview of every home and anchor, with nothing open. */
+  const overview = () => {
+    deselect();
+    setCollapsed(false);
+    setEdit(null);
+    setAdding(false);
+    setHomeForm(options.length ? "closed" : null);
+    setAlong(null);
+    setModesOpen(null);
+    setFitKey(newId());
+    sideScroll.current?.scrollTo({ top: 0, behavior: reduceMotion ? "auto" : "smooth" });
+    if (mobile) window.scrollTo({ top: 0, behavior: reduceMotion ? "auto" : "smooth" });
+  };
   // Clicking empty map deselects (cards and markers stop their clicks reaching the map).
   const onMapClick = (p: LatLng) => {
     if (adding) addAnchorAt(p);
@@ -529,7 +553,7 @@ export default function SettleApp() {
         className={`mode${on ? " on" : ""}${walkable ? " walkable" : ""}${loading ? " loading" : ""}`}
         aria-pressed={on}
         disabled={mins === null && !on}
-        onClick={() => chooseMode(l, m)}
+        onClick={() => { chooseMode(l, m); setModesOpen(null); }}
         title={mins === null ? `No ${MODE_LABEL[m].toLowerCase()} route` : walkable ? "Walkable: 15 min or less on foot" : m === l.defaultMode ? "Usual way for this trip" : undefined}
       >
         <span className="mode-l">{MODE_LABEL[m]}</span>
@@ -609,7 +633,21 @@ export default function SettleApp() {
           {l.overridden && <button className="link" onClick={() => chooseMode(l, l.defaultMode)}>Reset</button>}
           <span className="leg-t">{typeof l.minutes === "number" ? `${l.minutes} min` : l.minutes === null ? "No route" : "…"}</span>
         </div>
-        <div className="modes" role="group" aria-label={`How you get ${day ? `from ${l.prev?.name ?? "home"} ` : ""}to ${l.anchor.name}`}>{MODES.map((m) => modeButton(r, l, m))}</div>
+        {(() => {
+          const open = modesOpen?.optionId === r.option.id && modesOpen.key === k;
+          const how = `How you get ${day ? `from ${l.prev?.name ?? "home"} ` : ""}to ${l.anchor.name}`;
+          return (
+            <>
+              <button className={`modepick${open ? " open" : ""}`} aria-expanded={open} aria-label={`${how}: ${MODE_LABEL[l.mode]}. ${open ? "Hide" : "Show"} other ways`} onClick={() => setModesOpen(open ? null : { optionId: r.option.id, key: k })}>
+                <Icon name={l.mode} size={14} />
+                <span>{MODE_LABEL[l.mode]}</span>
+                {!open && l.walkable && <span className="mp-hint">Walkable</span>}
+                <Icon name="chev" size={13} className="mp-chev" />
+              </button>
+              {open && <div className="modes" role="group" aria-label={how}>{MODES.map((m) => modeButton(r, l, m))}</div>}
+            </>
+          );
+        })()}
         {legErrors[k] && <p className="err">{legErrors[k]}</p>}
       </div>
     );
@@ -769,7 +807,7 @@ export default function SettleApp() {
   const places = (
     <>
       <div className="sec">{day ? "Life anchors · your day, in order" : "Life anchors · usual way to get there"}</div>
-      {dayBar}
+      {!setup && dayBar}
       <div className="nav">
         <div data-reorder>
           {placeOrder.map((id) => anchors.find((a) => a.id === id)).filter((a): a is Anchor => !!a).map((a, i) => anchorRow(a, day ? i + 1 : null))}
@@ -780,7 +818,7 @@ export default function SettleApp() {
         {anchors.length < MAX_ANCHORS && (
           <button className="prow add" onClick={() => { setAdding(!adding); setEdit(null); }} aria-expanded={adding}>
             <span className="badge lg"><Icon name="plus" size={15} /></span>
-            <span className="t"><b>Add a life anchor</b></span>
+            <span className="t"><b>{setup ? (anchors.length ? "Add another place" : "Add a place") : "Add a life anchor"}</b></span>
           </button>
         )}
         {adding && (
@@ -810,35 +848,83 @@ export default function SettleApp() {
         <div className="head">
           <h1 className="brand"><Link href="/" aria-label="Settle home"><Wordmark size={22} mark={28} /></Link></h1>
           <div className="head-actions">
+            <button className="btn iconbtn" onClick={overview} aria-label="Back to the overview" title="Overview: every home and anchor">
+              <Icon name="house2" size={16} />
+            </button>
             <button className={`btn${running ? "" : " dark"}`} onClick={running ? skip : startCompare} disabled={!options.length || !anchors.length}>
               {running ? "Skip" : hasRun ? "Replay" : "Compare"}
             </button>
             <button className="btn" onClick={share} disabled={!options.length && !anchors.length}>{copied ? "Copied" : "Share"}</button>
-            <button className="btn iconbtn" onClick={toggleView} aria-label={mobile ? "Switch to the desktop view" : "Switch to the mobile view"} title={mobile ? "Desktop view" : "Mobile view"}>
-              <Icon name={mobile ? "desktop" : "phone"} size={16} />
-            </button>
           </div>
         </div>
-        <div className="side-scroll">
+        <div className="side-scroll" ref={sideScroll}>
           {plan.example && (
             <div className="banner">
               <span><b>This is an example.</b> Have a look around, then start your own.</span>
               <a href="/compare">Start your own</a>
             </div>
           )}
-          {!anchors.length ? (
+          {setup === "places" ? (
             <>
               <div className="onboard">
                 <span className="ob-step">Step 1 of 2</span>
-                <h2>Start with your life anchors</h2>
-                <p>The places that actually matter: work, the gym, your partner’s place, the kids’ school. Every home you add is measured against them.</p>
+                <h2>Add your places</h2>
+                <p>The places that matter to you: work, the gym, your partner’s place, the kids’ school. Add as many as you like, then press Next.</p>
                 <div className="ob-ideas">
-                  {ANCHOR_IDEAS.map((n) => (
+                  {ANCHOR_IDEAS.filter((n) => !anchors.some((a) => a.name === n)).map((n) => (
                     <button key={n} onClick={() => { setDraft({ name: n, mode: "drive" }); setAdding(true); setEdit(null); }}>{n}</button>
                   ))}
                 </div>
               </div>
               {places}
+              <div className="ob-foot">
+                <span>{anchors.length ? `${anchors.length} ${anchors.length === 1 ? "place" : "places"} added` : "Add at least one place"}</span>
+                <button className="btn dark" disabled={!anchors.length} onClick={() => { setSetup("homes"); setAdding(false); setEdit(null); setHomeForm(options.length ? "closed" : null); }}>
+                  Next<Icon name="arrow" size={14} />
+                </button>
+              </div>
+            </>
+          ) : setup === "homes" ? (
+            <>
+              <div className="onboard">
+                <span className="ob-step">Step 2 of 2</span>
+                <h2>Add your properties</h2>
+                <p>The homes you’re weighing up. Give each a name, then the address or a TradeMe link. Add as many as you like, then show them on the map.</p>
+              </div>
+              {error && <p className="err" style={{ margin: "0 2px 10px" }}>{error}</p>}
+              <div className="nav">
+                {options.map((o) => (
+                  <div key={o.id} className="arow-wrap">
+                    <div className="prow static">
+                      <span className="badge">{letter(o.id)}</span>
+                      <span className="t">
+                        <b>{o.title}</b>
+                        <span>{[o.subtitle?.split(",")[0], homeFacts(o, o.price ? formatPrice(o.price) : null)].filter(Boolean).join(" · ")}</span>
+                      </span>
+                    </div>
+                    <button className="x" onClick={() => removeOption(o.id)} aria-label={`Remove ${o.title}`} title="Remove"><Icon name="close" size={13} /></button>
+                  </div>
+                ))}
+              </div>
+              {hasMaps && options.length < MAX_OPTIONS && (
+                newHomeOpen ? (
+                  <div className="newhome">
+                    <HomeForm fetchListing={fetchListing} onSave={(d) => saveHome(null, d)} onCancel={() => setHomeForm("closed")} />
+                  </div>
+                ) : (
+                  <button className="prow add addprop" onClick={() => { setHomeForm("new"); setAdding(false); setEdit(null); }}>
+                    <span className="badge lg"><Icon name="plus" size={15} /></span>
+                    <span className="t"><b>{options.length ? "Add another property" : "Add a property"}</b></span>
+                  </button>
+                )
+              )}
+              {!hasMaps && <p className="hint">Adding homes and places needs the Google Maps key (see README).</p>}
+              <div className="ob-foot">
+                <button className="link" onClick={() => { setSetup("places"); setHomeForm("closed"); }}><Icon name="back" size={13} />Back to places</button>
+                <button className="btn dark" disabled={!options.length} onClick={() => { setSetup(null); setHomeForm("closed"); setFitKey(newId()); }}>
+                  Show on the map<Icon name="arrow" size={14} />
+                </button>
+              </div>
             </>
           ) : (
             <>
@@ -853,7 +939,6 @@ export default function SettleApp() {
             {hasMaps && options.length < MAX_OPTIONS && (
               newHomeOpen ? (
                 <div className="newhome">
-                  {!options.length && <p className="nh-step"><b>Step 2 of 2 · Add your properties here</b> Give it a name, then the address or a TradeMe link. Settle works out the trip from it to each of your anchors.</p>}
                   <HomeForm fetchListing={fetchListing} onSave={(d) => saveHome(null, d)} onCancel={() => setHomeForm("closed")} />
                 </div>
               ) : (
@@ -899,6 +984,9 @@ export default function SettleApp() {
               <span aria-hidden="true" />
               {mobile ? "Step through" : "Step through routes"}
             </label>
+            <button className="viewbtn" onClick={toggleView} aria-label={mobile ? "Switch to the desktop view" : "Switch to the mobile view"} title={mobile ? "Desktop view" : "Mobile view"}>
+              <Icon name={mobile ? "desktop" : "phone"} size={15} />
+            </button>
             <button className="fitbtn" onClick={() => setFitKey(newId())} aria-label="Show every home, place and route">
               <Icon name="expand" size={15} />{mobile ? "All" : "Show all"}
             </button>

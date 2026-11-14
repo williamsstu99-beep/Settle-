@@ -447,3 +447,24 @@ button:disabled { cursor: not-allowed; }
 .am.m.side-right > .acard .abody, .am.m.side-right > .acard .atab { padding-left: 14px; }
 .am.m.side-left > .acard .abody, .am.m.side-left > .acard .atab { padding-right: 14px; }
 @media (prefers-reduced-motion: reduce) { .mtab, .pm.m.open .mtab, .mchev { animation: none; transition: none; } }
+
+/* ---------- a trip's way to travel: the chosen mode with a ">", the others on demand ---------- */
+.modepick { display: inline-flex; align-items: center; gap: 6px; padding: 5px 8px 5px 9px; border: 1px solid var(--line2); border-radius: 8px; background: #fff; font-size: 12.5px; font-weight: 600; color: var(--fg); }
+.modepick:hover { border-color: var(--faint); }
+.modepick > svg:first-child { color: var(--a); }
+.mp-chev { color: var(--faint); rotate: -90deg; transition: rotate 0.15s; }
+.modepick.open .mp-chev { rotate: 0deg; }
+.mp-hint { font-size: 11px; font-weight: 600; color: var(--good); }
+.modepick + .modes { margin-top: 6px; }
+@media (prefers-reduced-motion: reduce) { .mp-chev { transition: none; } }
+
+/* phone / desktop view switch, top left of the map */
+.viewbtn { position: absolute; left: 14px; top: 14px; z-index: 5; width: 36px; height: 36px; display: grid; place-items: center; background: #fff; border-radius: 10px; box-shadow: var(--shadow); color: var(--fg); }
+.viewbtn:hover { background: var(--soft); }
+.app.mobile .viewbtn { left: 10px; top: 10px; width: 32px; height: 32px; }
+
+/* first-run setup: Next / Back at the foot of each step */
+.ob-foot { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin: 14px 2px 4px; padding-top: 14px; border-top: 1px solid var(--line); }
+.ob-foot > span { font-size: 12.5px; color: var(--muted); }
+.ob-foot .btn { padding: 9px 16px; }
+.ob-foot .link { display: inline-flex; align-items: center; gap: 5px; }

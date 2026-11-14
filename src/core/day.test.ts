@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { compare, legKey, pairKey } from "./compare";
-import { dayStops, dropIndex, fromAnchor, moveTo, newDayName, pruneDays, reorderDay, toggleSkip, tripsFor, type Day } from "./day";
+import { dayStops, dropIndex, fromAnchor, liveOrder, moveTo, newDayName, pruneDays, reorderDay, toggleSkip, tripsFor, type Day } from "./day";
 import { activeDay, anchorColor, decodePlan, encodePlan, EXAMPLE_PLAN } from "./plan";
 import type { Anchor, Option, Time } from "./types";
 
@@ -93,5 +93,10 @@ describe("share links keep saved days", () => {
     expect(back.days!.map((d) => [d.name, d.order, d.skip, d.home])).toEqual([["Gym day", [id(1), id(0)], [id(2)], true], ["Weekend", [id(2)], [id(0), id(1)], false]]);
     expect(activeDay(back)?.name).toBe("Weekend");
     expect(decodePlan(encodePlan(EXAMPLE_PLAN))!.days).toBeUndefined();
+  });
+  it("never hides an anchor added or removed while a drag is live", () => {
+    expect(liveOrder(["b", "a"], ["a", "b", "c"])).toEqual(["b", "a", "c"]);
+    expect(liveOrder(["b", "a", "x"], ["a", "b"])).toEqual(["b", "a"]);
+    expect(liveOrder([], ["a"])).toEqual(["a"]);
   });
 });

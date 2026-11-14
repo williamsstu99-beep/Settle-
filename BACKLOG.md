@@ -21,6 +21,7 @@ Budget: **Google Maps Platform max US$50/month** beyond the free allowances.
   - Options: A) shrink the map card and put details in the panel; B) fade cards while a route draws; C) let cards be dragged; D) make the map card tiny (name + price) and move the rest to the panel.
   - Suggested: D + A. Not decided.
 - **Day planner, next steps:** depart times per day (the trip home at 5pm, not 8am; weekends), a timeline view per property, "Along the way" stops added into the day, and a landing section showing days.
+- **Overview screen:** the house button returns to the overview (nothing selected, everything closed, map fits all). If it still feels cluttered, next step could be compact property cards in the overview (name, price, best time only).
 - **Day total:** not shown (no per-day totals rule). Revisit if people ask for "Day: 54 min" once trips are chained.
 - **Share links and stop → stop mode choices:** share links keep days but not mode overrides on stop → stop trips; add if it matters.
 - **Optimise:** suggest the fastest mode per anchor.
@@ -41,3 +42,5 @@ Budget: **Google Maps Platform max US$50/month** beyond the free allowances.
 - #13: property form (name, address → suburb, rent, beds, baths, listing link, photos), photos on the map card, chip borders removed.
 - #14: CLAUDE.md and this backlog.
 - Mobile mode: on by itself up to 760px, header toggle remembered per device. Homes are a small name tab (the desktop's unselected style); selected adds a faint arrow that opens photos (camera or library), price, rooms and links, and pans the card into view. Anchors keep their tabbed card, shrunk to name, time and mode symbol. Also fixed a double dashed border on the empty photo box. Parked: budget guard, motorway snapping and cards covering routes.
+- Fixes from the day planner preview: anchors added while a day is active now always show in the panel (a drag whose drop was missed could leave the list stuck on its old order; drags are now heard on the whole window, and the list always includes every anchor). A house button in the header goes back to the overview; the phone/desktop switch moved to the map. Each trip shows its mode with a ">" and the other modes open on demand, and their times only load then (fewer Route Matrix calls).
+- First-run setup: step 1 "Add your places" and step 2 "Add your properties" each take as many as you like; you move on with Next and Show on the map (Back to places too). Day controls stay hidden until setup is done.
