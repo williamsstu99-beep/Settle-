@@ -9,7 +9,7 @@ Budget: **Google Maps Platform max US$50/month** beyond the free allowances.
 
 ## Open decisions
 - **Day planner on the map:** check on a Vercel preview with real Google that chained routes, the trip back home (draws, then settles to light grey) and step-through look right.
-- **Launch plan:** audience, timing and domain are not decided yet.
+- **Launch plan:** the owner will launch on **Vercel Pro** (US$20/month, needed for any income). Audience (soft launch to friends and students suggested), timing and domain not decided yet.
 
 ## Parked (later)
 - **Mobile, zoomed far out:** cards keep a fixed size at every zoom, so far out they can still overlap. Possible later: shrink anchor cards to just the tab below a zoom level.
@@ -47,4 +47,5 @@ Budget: **Google Maps Platform max US$50/month** beyond the free allowances.
 - Setup copy: step 1 now reads "Add the places that matter to you", its button "Add anchor", and step 2 goes "Back to anchors".
 - Day planner polish: anchors left out of a day get no trip at all (no route, no Google call); the trip back home draws then fades to very light grey; the selected property's map card shows "Home from <last stop> · N min".
 - Steve (`.claude/agents/steve.md`): a technical project manager agent that checks the site for clunky spots (mobile first), suggests design refinements, researches income ideas and running costs, and explains the deployment steps. Reports in chat; no PRs unless asked. The owner will tune him.
-- Steve now knows the owner background (web designer on Upwork, wants location-independent income while travelling, aiming big). "Auracle" is still to be described by the owner.
+- Steve now knows the owner background (web designer on Upwork, wants location-independent income while travelling, aiming big). Auracle (a friend's AI training company moving into automations) added as background only.
+- Peak range on tap: "5–9 min at peak" loads only when you tap "Peak range" on a drive (it was 2 Routes Pro requests per drive for every home you selected). Steve's estimate: the Google bill at 1,000 users drops from about US$240 to about US$80 a month.

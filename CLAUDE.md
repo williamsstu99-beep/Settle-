@@ -24,7 +24,7 @@ Settle helps people pick a home by how it fits their life. Users add **life anch
 - **Real routes, not estimates:** Routes API for lines, Route Matrix only for the other-mode buttons. Drive is `TRAFFIC_AWARE` at the next weekday 08:00 in the user's time zone.
 - **Cost first** (Google bills per request; the app is free):
   - On load: one route per property × anchor in its chosen mode, nothing else.
-  - Other-mode times and the "5–9 min at peak" range (`/api/peak`) load only for the selected home, never while Compare is stepping.
+  - Other-mode times load only for a trip whose modes you open; the "5–9 min at peak" range (`/api/peak`) only when you tap "Peak range" on a drive. Never while Compare is stepping.
   - 3-day server cache plus browser cache, so reselecting is free. Per-IP rate limits on every API route.
   - Don't add calls per render, per pan or per unselected home.
 - **No server state, no accounts:** plans persist in `localStorage` (`settle.plan.v1` etc.). Share links encode the plan in `#s=` (no photos). User photos are downscaled data URLs, max 4 per property, device-only.
