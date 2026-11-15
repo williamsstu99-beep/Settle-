@@ -17,6 +17,7 @@ import { HomeForm, type HomeDraft } from "./HomeForm";
 import { PlaceSearch } from "./PlaceSearch";
 import { DRAW_MS, STEP_DRAW, STEP_GAP } from "./RouteLayer";
 import { useReorder } from "./useReorder";
+import { useSheet } from "./useSheet";
 import { NARROW_PX, readPref, resolveView, togglePref, type ViewPref } from "@/core/view";
 
 const MapView = dynamic(() => import("./MapView"), { ssr: false });
@@ -100,6 +101,8 @@ export default function SettleApp() {
     return () => mq.removeEventListener("change", on);
   }, []);
   const mobile = resolveView(viewPref, narrow) === "mobile";
+  // Phones: the panel is a bottom sheet over a full-screen map (core/sheet.ts).
+  const sheet = useSheet(narrow, "half");
   const toggleView = () => {
     const next = togglePref(viewPref, narrow);
     setViewPref(next);
@@ -501,7 +504,7 @@ export default function SettleApp() {
     setModesOpen(null);
     setFitKey(newId());
     sideScroll.current?.scrollTo({ top: 0, behavior: reduceMotion ? "auto" : "smooth" });
-    if (mobile) window.scrollTo({ top: 0, behavior: reduceMotion ? "auto" : "smooth" });
+    if (narrow) setSnap("half");
   };
   // Clicking empty map deselects (cards and markers stop their clicks reaching the map).
   const onMapClick = (p: LatLng) => {
@@ -518,9 +521,17 @@ export default function SettleApp() {
       return;
     }
     setCollapsed(false);
+    if (narrow) setSnap((s) => (s === "peek" ? "half" : s));
     requestAnimationFrame(() => document.getElementById(`card-${id}`)?.scrollIntoView({ behavior: "smooth", block: "nearest" }));
   };
   const running = !!(seq || pending);
+
+  /* ---------- phone sheet: get out of the way when the map matters ---------- */
+  const { setSnap } = sheet;
+  // Picking a home from a full sheet drops it to half, so its routes show.
+  useEffect(() => { if (narrow && selected) setSnap((s) => (s === "full" ? "half" : s)); }, [narrow, selected, setSnap]);
+  // Compare plays on the map: lower the sheet to watch it.
+  useEffect(() => { if (narrow && running) setSnap("peek"); }, [narrow, running, setSnap]);
 
   // Escape backs out one step: cancel adding, close an editor, then deselect.
   const escape = useRef(() => {});
@@ -854,9 +865,19 @@ export default function SettleApp() {
   );
 
   const body = (
-    <div className={`app${mobile ? " mobile" : ""}`}>
-      <aside className="side">
-        <div className="head">
+    <div className={`app${mobile ? " mobile" : ""}${narrow ? " sheet" : ""}`}>
+      <aside
+        className={`side${sheet.dragging ? " dragging" : ""}`}
+        style={narrow ? { height: sheet.height } : undefined}
+        data-snap={narrow ? sheet.snap : undefined}
+        onFocusCapture={(e) => { if (narrow && (e.target as HTMLElement).matches("input, textarea, select")) setSnap("full"); }}
+      >
+        {narrow && (
+          <button className="grab" aria-label={sheet.snap === "full" ? "Show less of the panel" : "Show more of the panel"} {...sheet.dragProps(sheet.step)} onClick={(e) => { if (e.detail === 0) sheet.step(); }}>
+            <span aria-hidden="true" />
+          </button>
+        )}
+        <div className="head" {...(narrow ? sheet.dragProps() : {})}>
           <h1 className="brand"><Link href="/" aria-label="Settle home"><Wordmark size={22} mark={28} /></Link></h1>
           <div className="head-actions">
             <button className="btn iconbtn" onClick={overview} aria-label="Back to the overview" title="Overview: every home and anchor">
@@ -868,7 +889,7 @@ export default function SettleApp() {
             <button className="btn" onClick={share} disabled={!options.length && !anchors.length}>{copied ? "Copied" : "Share"}</button>
           </div>
         </div>
-        <div className="side-scroll" ref={sideScroll}>
+        <div className="side-scroll" ref={(el) => { sideScroll.current = el; sheet.contentRef(el); }}>
           {plan.example && (
             <div className="banner">
               <span><b>This is an example.</b> Have a look around, then start your own.</span>
@@ -988,6 +1009,7 @@ export default function SettleApp() {
               onAnchorClick={onAnchorClick}
               onMapClick={onMapClick}
               mobile={mobile}
+              bottomInset={narrow ? sheet.heights[sheet.snap] : 0}
             />
             {adding && <div className="droptip">{mobile ? "Tap the map to drop a pin" : "Click the map to drop a pin · or search on the left"}</div>}
             <label className="steptoggle" title="Draw a home's routes one place at a time">

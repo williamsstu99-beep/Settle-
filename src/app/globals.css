@@ -275,12 +275,26 @@ button:disabled { cursor: not-allowed; }
 
 .line-tag { position: absolute; transform: translate(-50%, -50%); display: inline-flex; align-items: center; gap: 3px; background: var(--c); color: #fff; border-radius: 5px; padding: 2px 6px; font-size: 10.5px; font-weight: 700; white-space: nowrap; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2); pointer-events: none; }
 
-@media (max-width: 760px) {
-  .app { display: flex; flex-direction: column; height: auto; min-height: 100dvh; }
-  .mapwrap { order: -1; height: 56dvh; min-height: 360px; flex: none; }
-  .side { border-right: 0; border-top: 1px solid var(--line); }
-  .side-scroll { overflow: visible; }
+/* ---------- phones: the panel is a bottom sheet over a full-screen map (core/sheet.ts) ---------- */
+.grab { display: none; }
+.app.sheet { display: block; position: relative; height: 100dvh; overflow: hidden; }
+.app.sheet .mapwrap { position: absolute; inset: 0; }
+.app.sheet .side {
+  position: absolute; left: 0; right: 0; bottom: 0; z-index: 20;
+  border-right: 0; border-radius: 16px 16px 0 0;
+  box-shadow: 0 -2px 6px rgba(20, 24, 31, 0.06), 0 -8px 28px rgba(20, 24, 31, 0.14);
+  padding-bottom: env(safe-area-inset-bottom);
+  transition: height 0.3s cubic-bezier(0.2, 0.9, 0.3, 1);
+  will-change: height;
 }
+.app.sheet .side.dragging { transition: none; }
+.app.sheet .side-scroll { overflow-y: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; }
+.app.sheet .side[data-snap="peek"] .side-scroll { overflow-y: hidden; }
+.app.sheet .grab { display: flex; justify-content: center; align-items: center; width: 100%; height: 22px; padding-top: 4px; touch-action: none; cursor: grab; flex: none; }
+.app.sheet .grab span { width: 38px; height: 5px; border-radius: 3px; background: var(--line2); }
+.app.sheet .grab:focus-visible { outline-offset: -4px; }
+.app.sheet .head { touch-action: none; padding-top: 4px; padding-bottom: 10px; }
+@media (prefers-reduced-motion: reduce) { .app.sheet .side { transition: none; } }
 
 /* ---------- expanded card: one line per place, modes as small text options ---------- */
 .cb { gap: 12px; }

@@ -61,6 +61,8 @@ type Props = {
   onStopHover: (id: string | null) => void;
   /** Mobile mode: phone-sized cards (see core/view.ts). */
   mobile: boolean;
+  /** Px of map hidden under the phone bottom sheet; fitting and card panning keep clear of it. */
+  bottomInset: number;
 };
 
 /**
@@ -76,8 +78,10 @@ export function fitPadding(w: number, h: number) {
   };
 }
 
-function FitBounds({ points, fitKey }: { points: LatLng[]; fitKey: string }) {
+function FitBounds({ points, fitKey, inset }: { points: LatLng[]; fitKey: string; inset: number }) {
   const map = useMap();
+  const insetRef = useRef(inset);
+  useEffect(() => { insetRef.current = inset; });
   useEffect(() => {
     if (!map || !points.length) return;
     if (points.length === 1) {
@@ -87,8 +91,10 @@ function FitBounds({ points, fitKey }: { points: LatLng[]; fitKey: string }) {
     }
     const b = new google.maps.LatLngBounds();
     points.forEach((p) => b.extend(p));
-    const div = map.getDiv();
-    map.fitBounds(b, fitPadding(div.offsetWidth || 800, div.offsetHeight || 600));
+    const div = map.getDiv(), under = insetRef.current;
+    // Fit into the part of the map the sheet doesn't cover.
+    const pad = fitPadding(div.offsetWidth || 800, Math.max(200, (div.offsetHeight || 600) - under));
+    map.fitBounds(b, { ...pad, bottom: pad.bottom + under });
     // fitKey decides when we refit; points are read fresh at that moment.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [map, fitKey]);
@@ -184,6 +190,8 @@ const HomeMarker = memo(function HomeMarker({ o, back, letter, selected, side, g
 
 type MobileHomeProps = {
   o: Option;
+  /** Px of map hidden under the bottom sheet. */
+  inset: number;
   back?: BackHome;
   letter: string;
   selected: boolean;
@@ -200,7 +208,7 @@ type MobileHomeProps = {
  * Once selected, a faint arrow under the name opens the rest: photos (add from
  * the phone's camera or library), price, rooms and the listing.
  */
-const MobileHomeMarker = memo(function MobileHomeMarker({ o, back, letter, selected, open, side, onSelect, onToggle, onDetail, onPhotos }: MobileHomeProps) {
+const MobileHomeMarker = memo(function MobileHomeMarker({ o, inset, back, letter, selected, open, side, onSelect, onToggle, onDetail, onPhotos }: MobileHomeProps) {
   const price = o.price ? formatPrice(o.price).replace(/\/(wk|mo)$/, "") : null;
   const per = o.price?.period === "month" ? "/mo" : o.price?.period === "week" ? "/wk" : "";
   const facts = homeFacts(o);
@@ -216,11 +224,12 @@ const MobileHomeMarker = memo(function MobileHomeMarker({ o, back, letter, selec
       if (!c) return;
       const pad = 10, top = 52;
       const dx = c.left < m.left + pad ? c.left - m.left - pad : c.right > m.right - pad ? c.right - m.right + pad : 0;
-      const dy = c.top < m.top + top ? c.top - m.top - top : c.bottom > m.bottom - pad ? c.bottom - m.bottom + pad : 0;
+      const bottom = m.bottom - inset - pad;
+      const dy = c.top < m.top + top ? c.top - m.top - top : c.bottom > bottom ? c.bottom - bottom : 0;
       if (dx || dy) map.panBy(dx, dy);
     });
     return () => cancelAnimationFrame(raf);
-  }, [open, map, side]);
+  }, [open, map, side, inset]);
   return (
     <div className={`pm m side-${side}${selected ? " sel" : ""}${open ? " open" : ""}`}>
       <div key={side} ref={card} className="mtab">
@@ -490,7 +499,7 @@ export default function MapView(p: Props) {
       }}
       style={{ position: "absolute", inset: 0 }}
     >
-      <FitBounds points={fitPoints} fitKey={`${p.fitKey}|${routePairs}`} />
+      <FitBounds points={fitPoints} fitKey={`${p.fitKey}|${routePairs}`} inset={p.bottomInset} />
       <RouteLayer routes={drawRoutes} instant={p.instant} />
 
       {routes
@@ -541,6 +550,7 @@ export default function MapView(p: Props) {
           {p.mobile ? (
             <MobileHomeMarker
               o={o}
+              inset={p.bottomInset}
               back={o.id === selected ? backHome : undefined}
               letter={letterOf(i)}
               selected={o.id === selected}
