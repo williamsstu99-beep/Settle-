@@ -210,15 +210,16 @@ export default function SettleApp() {
       });
   }, [timesWanted]);
 
-  /* ---------- "5–9 min at peak" for the selected home's drives only (two requests each) ---------- */
+  /* ---------- "5–9 min at peak": only for a drive you tap "Peak range" on (two requests each) ---------- */
   const peakAsked = useRef(new Set<string>());
+  const [peakWanted, setPeakWanted] = useState<Set<string>>(() => new Set());
   useEffect(() => {
     const ts = selected ? trips.get(selected) : undefined;
     if (!ts || seq || !hasMapsKey) return;
     const want = ts
       .filter((t) => tripMode(overrides, t) === "drive")
       .map((t) => ({ t, leg: legs.get(legKey(t.from, t.to, "drive")) }))
-      .filter(({ t, leg }) => leg?.status === "ok" && !leg.peak && !peakAsked.current.has(legKey(t.from, t.to, "drive")))
+      .filter(({ t, leg }) => peakWanted.has(legKey(t.from, t.to, "drive")) && leg?.status === "ok" && !leg.peak && !peakAsked.current.has(legKey(t.from, t.to, "drive")))
       .slice(0, 8);
     if (!want.length) return;
     for (const { t } of want) peakAsked.current.add(legKey(t.from, t.to, "drive"));
@@ -237,7 +238,7 @@ export default function SettleApp() {
         });
       })
       .catch(() => {}); // optional detail: the card just says "Drive"
-  }, [selected, seq, trips, overrides, legs]);
+  }, [selected, seq, trips, overrides, legs, peakWanted]);
 
   /* ---------- route lines, only for the mode chosen per pair: the selected home, or every home for Compare ---------- */
   // Every home's routes are shown (grey for homes that aren't selected), so fetch them all; results are cached.
@@ -644,6 +645,16 @@ export default function SettleApp() {
                 {!open && l.walkable && <span className="mp-hint">Walkable</span>}
                 <Icon name="chev" size={13} className="mp-chev" />
               </button>
+              {l.mode === "drive" && l.leg?.status === "ok" && (() => {
+                const pk = legKey(l.from, l.to, "drive"), p = l.leg.peak;
+                return p ? (
+                  <span className="peak">{p[0] === p[1] ? `${p[0]}` : `${p[0]}–${p[1]}`} min at peak</span>
+                ) : peakWanted.has(pk) ? (
+                  <span className="peak">Checking peak…</span>
+                ) : (
+                  <button className="link peaklink" onClick={() => setPeakWanted((s) => new Set(s).add(pk))} title="Best and worst case for this drive at 8am">Peak range</button>
+                );
+              })()}
               {open && <div className="modes" role="group" aria-label={how}>{MODES.map((m) => modeButton(r, l, m))}</div>}
             </>
           );

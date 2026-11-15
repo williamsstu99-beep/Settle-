@@ -35,7 +35,7 @@ The engine is deliberately general (anchors and options, not flats and workplace
 | `src/core/sources/trademe.ts` | TradeMe link parsing and listing → option mapping. New listing sources (agency feeds, other portals) go next to it. |
 | `src/server` | Google Routes client with caching, TradeMe API client, rate limiting. |
 | `src/app/api/times` | `POST` durations for homes × places in the requested modes (Route Matrix API). |
-| `src/app/api/peak` | `POST` best/worst drive time at peak for the selected home's drives. |
+| `src/app/api/peak` | `POST` best/worst drive time at peak, only for a drive you tap "Peak range" on. |
 | `src/app/api/routes` | `POST` route lines for home → place pairs in a given mode (Routes API, max 48 per request). |
 | `src/app/api/along` | `POST` suggestions along a route (Places API text search along route), with detour minutes. |
 | `src/app/api/listing` | `GET ?url=` turns a TradeMe link into a home. |
@@ -70,10 +70,10 @@ Register an application at the [TradeMe developer site](https://developer.tradem
 On load, Settle asks for one route per home × place in its chosen mode (e.g. 3 homes × 3 places = 9 drive routes) and nothing else. Extras only load for the home you select, and not while Compare is stepping through homes (only for the home it ends on):
 
 - **Mode button times:** only for a trip whose modes you open: one Route Matrix element per mode not already known (e.g. transit, bike, walk = 3).
-- **"5–9 min at peak":** two duration-only drive requests per place (`/api/peak`).
+- **"5–9 min at peak":** two duration-only drive requests (`/api/peak`), only when you tap "Peak range" on a drive. Both are Routes Pro (traffic-aware), so this was the biggest cost before it moved to on tap.
 - **Terrain:** bike and walk routes make one Elevation request if that API is enabled.
 
-**Days:** a day doesn't add trips, it changes where they start. Stop → stop trips (e.g. gym → work) are the same from every home, so they're fetched once and shared; only home → first stop and last stop → home are per home. Other-mode times load only for a trip you open; peak ranges only for the selected home.
+**Days:** a day doesn't add trips, it changes where they start. Stop → stop trips (e.g. gym → work) are the same from every home, so they're fetched once and shared; only home → first stop and last stop → home are per home. Other-mode times load only for a trip you open; peak ranges only for a drive you tap "Peak range" on.
 
 Everything is cached for 3 days on the server (by rounded coordinates and mode) and in the browser, so reselecting a home or switching back to a mode is free. Traffic-aware driving and transit are billed at a higher tier than walk and bike.
 
