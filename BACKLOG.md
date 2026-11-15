@@ -4,7 +4,6 @@ Keep this current: every PR updates it (move items to Done, add what was learned
 Budget: **Google Maps Platform max US$50/month** beyond the free allowances.
 
 ## Next up
-- **Mobile panel:** the map cards are done (see Done); the panel below the map is still the desktop panel stacked underneath. Options raised: A) a bottom sheet over a full-screen map (peek / half / full), B) Map / List tabs, C) keep stacked but tighten it. Not decided.
 - **Hero screenshot:** a real app screenshot of a listing with photos at `public/landing/hero.png` (~1200×1040). The owner provides it.
 
 ## Open decisions
@@ -12,6 +11,7 @@ Budget: **Google Maps Platform max US$50/month** beyond the free allowances.
 - **Launch plan:** the owner will launch on **Vercel Pro** (US$20/month, needed for any income). Audience (soft launch to friends and students suggested), timing and domain not decided yet.
 
 ## Parked (later)
+- **Sheet polish after real-phone testing:** check iPhone Safari (address bar resizing, the keyboard over forms, safe areas) and Android Chrome on the preview. If dragging on the header feels too easy to trigger, limit it to the handle.
 - **Mobile, zoomed far out:** cards keep a fixed size at every zoom, so far out they can still overlap. Possible later: shrink anchor cards to just the tab below a zoom level.
 - **Budget guard (US$50/month)** (parked by the owner, keep): do these outside the code, then add an app-side guard.
   - **Google Cloud console:** budget alerts at 50/90/100%, plus daily quota caps on the Routes API and Places API (New). A budget alone only warns; quota caps actually stop spend.
@@ -49,3 +49,4 @@ Budget: **Google Maps Platform max US$50/month** beyond the free allowances.
 - Steve (`.claude/agents/steve.md`): a technical project manager agent that checks the site for clunky spots (mobile first), suggests design refinements, researches income ideas and running costs, and explains the deployment steps. Reports in chat; no PRs unless asked. The owner will tune him.
 - Steve now knows the owner background (web designer on Upwork, wants location-independent income while travelling, aiming big). Auracle (a friend's AI training company moving into automations) added as background only.
 - Peak range on tap: "5–9 min at peak" loads only when you tap "Peak range" on a drive (it was 2 Routes Pro requests per drive for every home you selected). Steve's estimate: the Google bill at 1,000 users drops from about US$240 to about US$80 a month.
+- Phone bottom sheet (the owner chose option A over a pinned map): full-screen map with the panel as a sheet at peek / half / full. Drag the handle or header, tap the handle, swipe the list. It drops to half when you pick a home, to peek for Compare, and opens to full for typing. Map fitting and opened cards keep clear of it.
