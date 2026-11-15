@@ -39,6 +39,7 @@ The engine is deliberately general (anchors and options, not flats and workplace
 | `src/app/api/routes` | `POST` route lines for home → place pairs in a given mode (Routes API, max 48 per request). |
 | `src/app/api/along` | `POST` suggestions along a route (Places API text search along route), with detour minutes. |
 | `src/app/api/listing` | `GET ?url=` turns a TradeMe link into a home. |
+| `.claude/agents/steve.md` | Steve, the project's technical project manager agent: site checks, design ideas, income and cost research, deployment steps. Reports in chat. |
 | `src/components` | The UI: side panel (`SettleApp`), map (`MapView`), address search (`PlaceSearch`), drag-to-reorder (`useReorder`). |
 
 ## Setup

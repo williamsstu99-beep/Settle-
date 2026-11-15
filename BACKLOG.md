@@ -46,3 +46,4 @@ Budget: **Google Maps Platform max US$50/month** beyond the free allowances.
 - First-run setup: step 1 "Add your places" and step 2 "Add your properties" each take as many as you like; you move on with Next and Show on the map (Back to places too). Day controls stay hidden until setup is done.
 - Setup copy: step 1 now reads "Add the places that matter to you", its button "Add anchor", and step 2 goes "Back to anchors".
 - Day planner polish: anchors left out of a day get no trip at all (no route, no Google call); the trip back home draws then fades to very light grey; the selected property's map card shows "Home from <last stop> · N min".
+- Steve (`.claude/agents/steve.md`): a technical project manager agent that checks the site for clunky spots (mobile first), suggests design refinements, researches income ideas and running costs, and explains the deployment steps. Reports in chat; no PRs unless asked. The owner will tune him.
