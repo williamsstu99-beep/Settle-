@@ -40,17 +40,21 @@ export default function Privacy() {
 
         <h2>What Settle’s server does</h2>
         <ul>
-          <li>It passes requests to Google and keeps the route results (locations and times) for up to three days, so asking again is free and fast. It doesn’t record who asked.</li>
+          <li>It passes requests to Google and briefly keeps the results (routes and times for up to three days, “Along the way” suggestions for a day), so asking again is free and fast. It doesn’t record who asked.</li>
           <li>Like any website, the hosting provider (Vercel) sees your IP address. Settle uses it only to stop one address making too many requests at once.</li>
           <li>If you paste a TradeMe link, Settle asks TradeMe for that listing’s details.</li>
         </ul>
 
         <h2>Share links</h2>
-        <p>A share link carries your plan inside the link itself: anchors, properties and days, but not photos. Anyone you send it to can see that plan, so share it with people you trust.</p>
+        <p>
+          A share link carries your plan inside the link itself: your anchors and their addresses, your properties (with rent and any listing links)
+          and your days, but not photos. That part of the link comes after the “#”, so it’s never sent to Settle’s server. Anyone you send it to can
+          see the plan, so share it with people you trust. Opening someone’s link never replaces a plan already on your device unless you choose to keep theirs.
+        </p>
 
         <h2>What Settle never does</h2>
         <ul>
-          <li>No accounts, no tracking cookies and no ads.</li>
+          <li>No accounts and no ads. Settle itself sets no cookies; the Google map runs under Google’s own policy.</li>
           <li>Your information is never sold or shared for marketing.</li>
         </ul>
 

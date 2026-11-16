@@ -54,7 +54,6 @@ export async function POST(request: Request) {
     );
     return Response.json({ departure: departure.toISOString(), times });
   } catch (e) {
-    console.error("times error", e);
     return errorResponse(e, "times");
   }
 }

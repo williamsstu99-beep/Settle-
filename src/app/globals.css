@@ -518,3 +518,5 @@ button:disabled { cursor: not-allowed; }
 .app.sheet .viewbtn { display: none; }
 .side-foot { margin: 28px 2px 4px; font-size: 12px; color: var(--faint); }
 .side-foot a { color: var(--muted); text-decoration: underline; text-underline-offset: 2px; }
+.app.sheet .banner .btn.sm { min-height: 40px; padding: 9px 14px; font-size: 14px; }
+.app.sheet .banner a { padding: 10px 2px; }

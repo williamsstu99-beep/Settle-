@@ -12,20 +12,14 @@ The site is public now (Vercel Authentication was turned off), so step 1 is urge
 3. **Vercel → Settings → Functions → Region: Sydney (`syd1`).** The default is Washington, D.C. (`iad1`), so every `/api/*` call from NZ crosses the Pacific twice.
 4. **Domain (optional for launch):** a `.nz` or `.co.nz` from an NZ registrar with cheap renewals (about NZ$17–36 a year). In Vercel → Settings → Domains, add the apex and `www`, copy the DNS records to the registrar, then add the domain to the browser key.
 5. **Vercel Pro** (US$20/month) before any referral link, donate button or paid pass. Hobby is non-commercial. The owner has decided to launch on Pro.
-6. **TradeMe:** email api@trademe.co.nz about a Property API key for a free renter tool. Don't depend on it: the API is aimed at sellers, and buyer-side tools are "generally unsupported". Typed addresses already work.
+6. **Privacy contact:** set `NEXT_PUBLIC_CONTACT_EMAIL` in Vercel (Settings → Environment Variables) and redeploy. The privacy page shows it under "Your rights". NZ's Privacy Act expects a way to get in touch.
+7. **After adding a domain, redeploy once** so link previews (`metadataBase`) use it instead of the `vercel.app` address.
+8. **TradeMe:** email api@trademe.co.nz about a Property API key for a free renter tool. Don't depend on it: the API is aimed at sellers, and buyer-side tools are "generally unsupported". Typed addresses already work.
 
-### Before a wider launch: app fixes (from Steve's review)
-- **Share links overwrite the recipient's own plan** (and photos) with no warning. Suggested: open a shared plan like the example, with a banner "Keep it, or go back to yours" (option A), not saved until they choose. Size S. Waiting on the owner's pick of A or B (see Open decisions).
-- **iOS zooms into text fields** under 16px (`.text` is 14px, `.text.sm` 12.5px). Make inputs 16px on phones. Size S.
-- **Tap targets on phones:** Remove ×, drag grips, "Leave out", mode buttons and chips are 24–32px. Aim for 40–44px hit areas. Size S.
-- **Privacy page** (`/privacy`, one screen, plain English): what stays on the device, what goes to Google and Vercel, no accounts, no selling data, a contact. NZ Privacy Act IPP3 expects one. Size S.
-- **Link previews:** an Open Graph image and description for `/` and `/compare`, so shared links don't look bare in Messenger and WhatsApp. Size S.
-- **Native share on phones:** `navigator.share()` where available, with the clipboard as the fallback. Size S.
-- **Fewer floating map buttons on phones:** drop the zoom +/- (people pinch) and hide the view toggle. Size S.
+### Before a wider launch: app fixes still to do (from Steve's reviews)
 - **Compare off-screen:** scroll the map into view when Compare or Replay starts (less of an issue with the bottom sheet). Size S.
-- **Stale errors:** clear the error line on the next success. Size S.
 - **Along the way costs less without ratings:** asking for `rating`/`userRatingCount` puts Text Search in Enterprise (1k free, then US$35/1k). Without them it's Pro (5k free, then US$32/1k). Offer ratings on tap, or drop them. Size S.
-- **README fix:** setup says to restrict the server key to "Routes API only", but Along the way needs Places API (New). Size S.
+- **Watch the rate limits after student posts:** 20 route requests a minute per IP suits most people, but hundreds of students behind one uni address could hit it. The limiter is per server instance, so it's softer in practice. Check the Vercel logs after any AUSA or AuSM post.
 - **Check Google's caching terms** for the Routes API against the 3-day server cache and the browser cache. Location data from Directions/Geocoding may be cached up to 30 days, and place IDs may be cached. No Routes-specific clause was found yet.
 - **Test on real phones** with real Google: iPhone Safari (address bar, keyboard over forms, safe areas) and Android Chrome. Setup, Compare, a shared link opened on a second phone, a TradeMe link.
 - **Turn on Vercel Web Analytics** (no cookies) to count visitors.
@@ -39,7 +33,6 @@ The site is public now (Vercel Authentication was turned off), so step 1 is urge
 Include `/compare?example=1` in every post.
 
 ## Open decisions
-- **Shared links:** A) open a shared plan as a preview with "Keep it, or go back to yours" (suggested), or B) keep both plans side by side. Asked, not answered yet.
 - **Launch:** on Vercel Pro (decided). Domain, timing and audience are not decided yet (a soft launch to friends and students is suggested).
 - **Day planner on the map:** check on the live site with real Google that chained routes, the trip back home (draws, then settles to light grey) and step-through look right.
 
@@ -114,3 +107,13 @@ Sources are in his overnight notes and morning report. Re-check prices before re
   - It plays in the hero (`public/landing/demo.mp4`, 1.2 MB); a higher-quality MP4 went to the owner for an Upwork proposal.
   - Vercel Authentication is off, so the site is public.
 - Backlog rewritten in full (this version): launch steps, Steve's fixes and research, decisions and the PR history.
+- #25: **backlog rewrite and launch fixes** (Steve's must-do list, then his review of them).
+  - **Shared links are safe.** A shared link or the example opens as a preview that's never saved over the plan on this device, with a "Keep it" / "Back to yours" banner. If the device has no plan of its own, a shared plan is simply kept, so edits are never lost. `core/plan.ts` `planSource()` decides. Shared-links decision: A.
+  - **Plain errors for the public.** "Today's limit reached, try tomorrow" for a daily quota, "busy, try in a minute" for a rate limit, and a general "try again" otherwise, worded for suggestions on Along the way. Google's text and setup hints go to the server log, and only show on previews and local dev.
+  - **Tighter per-IP limits:** routes 20/min (was 60), times 20, peak 15, along 10, listing 20.
+  - **Phones:** 16px text fields (no iOS zoom) and 38–44px tap targets, banner buttons included. No zoom buttons or view toggle; phones always use mobile mode, even with an old saved "desktop" choice.
+  - **`/privacy`:** a plain-English privacy page, checked by Steve against the code. Linked from the landing footer and the bottom of the app panel. The contact shows once `NEXT_PUBLIC_CONTACT_EMAIL` is set.
+  - **Link previews:** a 1200×630 preview card with alt text, Open Graph and Twitter tags, and `metadataBase` from Vercel's production domain.
+  - Setup notes: the server key needs Places API (New) as well as Routes.
+  - Share opens the phone's share sheet (WhatsApp, Messenger…); desktop still copies the link. An old error line clears once routes or times come back.
+  - Steve reads BACKLOG.md in full before every check.

@@ -33,6 +33,6 @@ export async function POST(request: Request) {
   } catch (e) {
     const detail = explainError(e).detail ?? "";
     const hint = /places|SERVICE_DISABLED|not been used/i.test(detail) ? "Suggestions need the Places API (New) enabled and allowed on the server key." : undefined;
-    return errorResponse(e, "along", hint);
+    return errorResponse(e, "along", hint, "suggestions");
   }
 }

@@ -46,6 +46,16 @@ function loadPlan(): Plan {
   return loadSaved();
 }
 
+/** True when this device already has a plan of its own (not the example, not empty). */
+function savedPlanExists(): boolean {
+  try {
+    const p = JSON.parse(localStorage.getItem(PLAN_KEY) ?? "null") as Plan | null;
+    return !!p && !p.example && (p.anchors?.length > 0 || p.options?.length > 0);
+  } catch {
+    return false;
+  }
+}
+
 /** The plan saved on this device, or an empty one. */
 function loadSaved(): Plan {
   try {
@@ -106,7 +116,8 @@ export default function SettleApp() {
     mq.addEventListener("change", on);
     return () => mq.removeEventListener("change", on);
   }, []);
-  const mobile = resolveView(viewPref, narrow) === "mobile";
+  // Phones always get mobile mode (the sheet layout has no view switch); wider screens follow the toggle.
+  const mobile = narrow || resolveView(viewPref, narrow) === "mobile";
   // Phones: the panel is a bottom sheet over a full-screen map (core/sheet.ts).
   const sheet = useSheet(narrow, "half");
   const toggleView = () => {
@@ -154,21 +165,19 @@ export default function SettleApp() {
   const swatch = (a: Anchor) => anchorColor(a, anchors.indexOf(a));
   const swatchStyle = (a: Anchor) => ({ "--a": swatch(a).marker, "--ar": swatch(a).route, "--at": swatch(a).tab } as React.CSSProperties);
 
-  // A shared link or the example is a preview: it's never saved over the plan on this device until you keep it.
+  // A shared link or the example is a preview: it's never saved over a plan on this device until you keep it.
+  // With no plan of your own there's nothing to protect, so a shared plan is simply kept (and edits are never lost).
+  const [hasSaved] = useState(savedPlanExists);
   const [preview, setPreview] = useState<"shared" | "example" | null>(() => {
     const src = planSource(location.hash, location.search);
-    return src === "saved" ? null : src;
+    return src === "saved" || (src === "shared" && !hasSaved) ? null : src;
   });
-  const [hasSaved] = useState(() => {
-    try {
-      const p = JSON.parse(localStorage.getItem(PLAN_KEY) ?? "null") as Plan | null;
-      return !!p && !p.example && (p.anchors?.length > 0 || p.options?.length > 0);
-    } catch { return false; }
-  });
+  const [sharedKept, setSharedKept] = useState(() => planSource(location.hash, location.search) === "shared" && !hasSaved);
+  useEffect(() => { if (sharedKept) clearShareHash(); }, [sharedKept]);
   useEffect(() => {
     if (!preview && !plan.example) try { localStorage.setItem(PLAN_KEY, JSON.stringify(plan)); } catch {}
   }, [plan, preview]);
-  const clearShareHash = () => { if (location.hash.startsWith("#s=")) history.replaceState(null, "", location.pathname + location.search); };
+  function clearShareHash() { if (location.hash.startsWith("#s=")) history.replaceState(null, "", location.pathname + location.search); }
   useEffect(() => saveMap(LEGS_KEY, legs, 300), [legs]);
   useEffect(() => saveMap(TIMES_KEY, times, 1200), [times]);
 
@@ -217,6 +226,7 @@ export default function SettleApp() {
       modes: timesWanted.modes,
     })
       .then((j) => {
+        setError(null);
         setTimes((prev) => {
           const next = new Map(prev);
           for (const t of j.times) next.set(legKey(t.optionId, t.anchorId, t.mode), t);
@@ -283,6 +293,7 @@ export default function SettleApp() {
       pairs: batch.map(({ t, mode }) => ({ optionId: t.from, anchorId: t.to, mode, origin: t.origin, destination: t.destination })),
     })
       .then((j) => {
+        setError(null); // routes are coming back again, so an old error no longer applies
         setLegs((prev) => {
           const next = new Map(prev);
           for (const l of j.legs) next.set(legKey(l.optionId, l.anchorId, l.mode), l);
@@ -496,6 +507,15 @@ export default function SettleApp() {
 
   const share = async () => {
     const url = `${location.origin}${location.pathname}#s=${encodePlan(plan)}`;
+    // Phones: the native share sheet (WhatsApp, Messenger…). Desktop: copy the link.
+    if (narrow && typeof navigator.share === "function") {
+      try {
+        await navigator.share({ title: "Settle", text: "Compare these homes by their real trips on Settle", url });
+        return;
+      } catch (e) {
+        if ((e as Error).name === "AbortError") return; // they closed the share sheet
+      }
+    }
     try {
       await navigator.clipboard.writeText(url);
       setCopied(true);
@@ -514,21 +534,8 @@ export default function SettleApp() {
     setPreview(null);
     clearShareHash();
   };
-  /** Leave a shared plan without saving it, and go back to the plan saved on this device. */
-  const backToMine = () => {
-    const mine = loadSaved();
-    deselect();
-    setEdit(null);
-    setAdding(false);
-    setAlong(null);
-    setModesOpen(null);
-    setPreview(null);
-    clearShareHash();
-    setPlan(mine);
-    setSetup(!mine.anchors.length ? "places" : !mine.options.length ? "homes" : null);
-    setHomeForm(null);
-    setFitKey(newId());
-  };
+  /** Leave a shared plan without saving it: reload the app on the plan saved on this device, so nothing from the shared plan lingers. */
+  const backToMine = () => location.assign(location.pathname);
   /** The way out: back to the overview of every home and anchor, with nothing open. */
   const overview = () => {
     deselect();
@@ -930,6 +937,12 @@ export default function SettleApp() {
             <div className="banner">
               <span><b>This is an example.</b> Have a look around, then start your own. Changes here aren’t saved.</span>
               <a href="/compare">Start your own</a>
+            </div>
+          )}
+          {sharedKept && (
+            <div className="banner shared" role="status">
+              <span><b>Someone shared this plan with you.</b> It’s saved on this device now, so you can change it and add your own.</span>
+              <span className="banner-acts"><button className="btn sm" onClick={() => setSharedKept(false)}>Got it</button></span>
             </div>
           )}
           {preview === "shared" && (

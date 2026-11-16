@@ -47,16 +47,16 @@ export function explainError(e: unknown): { error: string; detail?: string } {
 }
 
 /** What the public sees when a Google call fails: plain words, never Google's own text. */
-export function userError(e: unknown): { error: string; status: number } {
+export function userError(e: unknown, what = "travel times"): { error: string; status: number } {
   const msg = e instanceof Error ? e.message : "";
   const status = e instanceof RoutesApiError ? e.status : 0;
   if (status === 429 || /RESOURCE_EXHAUSTED|quota/i.test(msg)) {
     return /per ?day|daily|perDay|1d\b/i.test(msg)
-      ? { error: "Settle has reached today’s limit for travel times. Please try again tomorrow.", status: 429 }
+      ? { error: `Settle has reached today’s limit for ${what}. Please try again tomorrow.`, status: 429 }
       : { error: "Settle is busy right now. Please try again in a minute.", status: 429 };
   }
   if ((e as { name?: string })?.name === "TimeoutError") return { error: "Google took too long to answer. Please try again.", status: 504 };
-  return { error: "Couldn’t get travel times right now. Please try again in a moment.", status: 502 };
+  return { error: `Couldn’t get ${what} right now. Please try again in a moment.`, status: 502 };
 }
 
 /** Previews and local dev show the setup hint and Google's text; the public site doesn't. */
@@ -66,11 +66,12 @@ const showDetails = () => process.env.VERCEL_ENV !== "production";
  * The response for a failed Google call. Google's text and the setup hint always go to
  * the server log; the public only ever gets plain words (see userError).
  * @param setupHint a clearer hint for the person setting Settle up, if the caller knows one
+ * @param what what the person was getting, in plain words (default "travel times")
  */
-export function errorResponse(e: unknown, where: string, setupHint?: string): Response {
+export function errorResponse(e: unknown, where: string, setupHint?: string, what?: string): Response {
   const setup = explainError(e);
   console.error(`[${where}]`, setupHint ?? setup.error, setup.detail ?? "");
-  const pub = userError(e);
+  const pub = userError(e, what);
   const body = showDetails() && pub.status !== 429 ? { error: setupHint ?? setup.error, detail: setup.detail } : { error: pub.error };
   return Response.json(body, { status: pub.status });
 }

@@ -34,7 +34,6 @@ export async function POST(request: Request) {
     const peaks = await mapLimit(body.pairs, 4, async (p) => ({ optionId: p.optionId, anchorId: p.anchorId, peak: (await peakRange(p.origin, p.destination, departure, apiKey)) ?? null }));
     return Response.json({ peaks });
   } catch (e) {
-    console.error("peak error", e);
     return errorResponse(e, "peak");
   }
 }

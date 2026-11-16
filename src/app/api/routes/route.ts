@@ -52,7 +52,6 @@ export async function POST(request: Request) {
     });
     return Response.json({ departure: departure.toISOString(), legs });
   } catch (e) {
-    console.error("routes error", e);
     return errorResponse(e, "routes");
   }
 }
