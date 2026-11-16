@@ -1261,7 +1261,9 @@ export default function SettleApp() {
               onAnchorClick={onAnchorClick}
               onMapClick={onMapClick}
               mobile={mobile}
-              bottomInset={narrow ? sheet.heights[sheet.snap] : 0}
+              // Fit as if the sheet were at most half height: at full it covers the map anyway, and fitting into the
+              // strip above it would zoom right out (e.g. to all of NZ) after a reorder.
+              bottomInset={narrow ? Math.min(sheet.heights[sheet.snap], sheet.heights.half) : 0}
             />
             {adding && <div className="droptip">{mobile ? "Tap the map to drop a pin" : "Click the map to drop a pin · or search on the left"}</div>}
             <label className="steptoggle" title="Draw a home's routes one place at a time">
