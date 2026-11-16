@@ -4,7 +4,7 @@ Keep this current: every PR updates it (move items to Done, add what was learned
 Budget: **Google Maps Platform max US$50/month** beyond the free allowances.
 
 ## Next up
-- **Hero screenshot:** a real app screenshot of a listing with photos at `public/landing/hero.png` (~1200×1040). The owner provides it.
+- **Landing demo video:** the hero now plays `public/landing/demo.mp4` (with `demo-poster.jpg`) when it exists, before `hero.png` or the illustration. The recording (owner's photos on mock Grey Lynn and Kingsland addresses; Gym at Westfield Newmarket, Work at Commercial Bay, Grey Lynn School) is waiting on access to the live site, since it needs the real Google map. Also for the owner's Upwork proposal.
 
 ## Open decisions
 - **Day planner on the map:** check on a Vercel preview with real Google that chained routes, the trip back home (draws, then settles to light grey) and step-through look right.
