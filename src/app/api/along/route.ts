@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { RateLimiter } from "@/server/cache";
-import { clientIp, explainError, keyProblem, serverKey } from "@/server/keys";
+import { clientIp, errorResponse, explainError, keyProblem, serverKey } from "@/server/keys";
 import { searchAlong } from "@/server/places";
 
 const Body = z.object({
@@ -11,7 +11,7 @@ const Body = z.object({
   baseMinutes: z.number().min(0).max(1000),
 });
 
-const limiter = new RateLimiter(20, 60_000);
+const limiter = new RateLimiter(10, 60_000);
 const TRAVEL = { drive: "DRIVE", transit: "DRIVE", bike: "BICYCLE", walk: "WALK" } as const;
 
 /** POST: places matching a search (gym, café, school…) along a home → place route, with detour minutes. */
@@ -31,11 +31,8 @@ export async function POST(request: Request) {
     const results = await searchAlong(body.query, body.polyline, body.origin, TRAVEL[body.mode], body.baseMinutes, apiKey);
     return Response.json({ results });
   } catch (e) {
-    console.error("along error", e);
-    const out = explainError(e);
-    if (/places|SERVICE_DISABLED|not been used/i.test(out.detail ?? "")) {
-      return Response.json({ error: "Suggestions need the Places API (New) enabled and allowed on the server key.", detail: out.detail }, { status: 502 });
-    }
-    return Response.json(out, { status: 502 });
+    const detail = explainError(e).detail ?? "";
+    const hint = /places|SERVICE_DISABLED|not been used/i.test(detail) ? "Suggestions need the Places API (New) enabled and allowed on the server key." : undefined;
+    return errorResponse(e, "along", hint);
   }
 }

@@ -3,7 +3,7 @@ import { nextPeakDeparture } from "@/core/time";
 import type { Leg } from "@/core/types";
 import { RateLimiter } from "@/server/cache";
 import { computeRoute, mapLimit } from "@/server/google-routes";
-import { clientIp, explainError, keyProblem, serverKey } from "@/server/keys";
+import { clientIp, errorResponse, keyProblem, serverKey } from "@/server/keys";
 
 const MAX_PAIRS = 48; // e.g. 6 homes x 8 places
 
@@ -24,7 +24,7 @@ const Body = z.object({
     .max(MAX_PAIRS),
 });
 
-const limiter = new RateLimiter(60, 60_000); // route lines: initial draw plus individual mode switches
+const limiter = new RateLimiter(20, 60_000); // route lines: a session needs ~1 request to load, then one per mode switch. Room for a few people on one IP (uni wifi).
 
 /** POST: route lines (and exact times) for home → place pairs, one mode each. */
 export async function POST(request: Request) {
@@ -53,6 +53,6 @@ export async function POST(request: Request) {
     return Response.json({ departure: departure.toISOString(), legs });
   } catch (e) {
     console.error("routes error", e);
-    return Response.json(explainError(e), { status: 502 });
+    return errorResponse(e, "routes");
   }
 }

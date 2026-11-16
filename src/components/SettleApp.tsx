@@ -6,7 +6,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { compare, formatPrice, legKey, pairKey, tripMode, type LegView, type OptionSummary } from "@/core/compare";
 import { dayStops, MAX_DAYS, newDayName, pruneDays, reorderDay, toggleSkip, tripsFor, type Day, type Trip } from "@/core/day";
-import { activeDay, anchorColor, decodePlan, encodePlan, EXAMPLE_PLAN, letterOf, migratePlan, MAX_ANCHORS, MAX_OPTIONS, newId, nextAnchorColor, type Plan } from "@/core/plan";
+import { activeDay, planSource, anchorColor, decodePlan, encodePlan, EXAMPLE_PLAN, letterOf, migratePlan, MAX_ANCHORS, MAX_OPTIONS, newId, nextAnchorColor, type Plan } from "@/core/plan";
 import type { Anchor, LatLng, Leg, Mode, Option, Time } from "@/core/types";
 import type { AlongResult } from "@/server/places";
 import { Icon, MODE_LABEL } from "./icons";
@@ -43,6 +43,11 @@ function loadPlan(): Plan {
   }
   // The example is only shown when asked for (the landing page's "See an example").
   if (new URLSearchParams(location.search).has("example")) return EXAMPLE_PLAN;
+  return loadSaved();
+}
+
+/** The plan saved on this device, or an empty one. */
+function loadSaved(): Plan {
   try {
     const raw = localStorage.getItem(PLAN_KEY);
     if (raw) {
@@ -74,7 +79,8 @@ function saveMap<T>(key: string, m: Map<string, T>, max: number) {
 async function postJson<T>(url: string, body: unknown): Promise<T> {
   const r = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
   const j = await r.json().catch(() => ({}));
-  if (!r.ok) throw new Error([j.error ?? "Couldn't get travel times right now.", j.detail ? `Google said: ${j.detail}` : ""].filter(Boolean).join(" "));
+  // The public site only sends plain words; previews and local dev add Google's own text as `detail`.
+  if (!r.ok) throw new Error([j.error ?? "Couldn’t get travel times right now.", j.detail ? `(Details: ${j.detail})` : ""].filter(Boolean).join(" "));
   return j as T;
 }
 
@@ -148,11 +154,21 @@ export default function SettleApp() {
   const swatch = (a: Anchor) => anchorColor(a, anchors.indexOf(a));
   const swatchStyle = (a: Anchor) => ({ "--a": swatch(a).marker, "--ar": swatch(a).route, "--at": swatch(a).tab } as React.CSSProperties);
 
-  // Persist locally (never the untouched example, so it can't replace your own plan); drop a share hash once loaded.
+  // A shared link or the example is a preview: it's never saved over the plan on this device until you keep it.
+  const [preview, setPreview] = useState<"shared" | "example" | null>(() => {
+    const src = planSource(location.hash, location.search);
+    return src === "saved" ? null : src;
+  });
+  const [hasSaved] = useState(() => {
+    try {
+      const p = JSON.parse(localStorage.getItem(PLAN_KEY) ?? "null") as Plan | null;
+      return !!p && !p.example && (p.anchors?.length > 0 || p.options?.length > 0);
+    } catch { return false; }
+  });
   useEffect(() => {
-    if (!plan.example) try { localStorage.setItem(PLAN_KEY, JSON.stringify(plan)); } catch {}
-    if (location.hash.startsWith("#s=")) history.replaceState(null, "", location.pathname + location.search);
-  }, [plan]);
+    if (!preview && !plan.example) try { localStorage.setItem(PLAN_KEY, JSON.stringify(plan)); } catch {}
+  }, [plan, preview]);
+  const clearShareHash = () => { if (location.hash.startsWith("#s=")) history.replaceState(null, "", location.pathname + location.search); };
   useEffect(() => saveMap(LEGS_KEY, legs, 300), [legs]);
   useEffect(() => saveMap(TIMES_KEY, times, 1200), [times]);
 
@@ -399,7 +415,7 @@ export default function SettleApp() {
   const setPhotos = (id: string, photos: string[]) => {
     const next = { ...plan, example: false, options: plan.options.map((o) => (o.id === id ? { ...o, photos: photos.length ? photos : undefined } : o)) };
     try {
-      localStorage.setItem(PLAN_KEY, JSON.stringify(next));
+      if (!preview) localStorage.setItem(PLAN_KEY, JSON.stringify(next)); // a preview isn't saved until it's kept
     } catch {
       return setError("There's no room left on this device for more photos. Remove a few and try again.");
     }
@@ -492,6 +508,26 @@ export default function SettleApp() {
     setSeq(null);
     setPending(null);
     setSelectedState(null);
+  };
+  /** Keep a shared plan: from now on it's saved on this device. */
+  const keepShared = () => {
+    setPreview(null);
+    clearShareHash();
+  };
+  /** Leave a shared plan without saving it, and go back to the plan saved on this device. */
+  const backToMine = () => {
+    const mine = loadSaved();
+    deselect();
+    setEdit(null);
+    setAdding(false);
+    setAlong(null);
+    setModesOpen(null);
+    setPreview(null);
+    clearShareHash();
+    setPlan(mine);
+    setSetup(!mine.anchors.length ? "places" : !mine.options.length ? "homes" : null);
+    setHomeForm(null);
+    setFitKey(newId());
   };
   /** The way out: back to the overview of every home and anchor, with nothing open. */
   const overview = () => {
@@ -890,10 +926,22 @@ export default function SettleApp() {
           </div>
         </div>
         <div className="side-scroll" ref={(el) => { sideScroll.current = el; sheet.contentRef(el); }}>
-          {plan.example && (
+          {preview === "example" && (
             <div className="banner">
-              <span><b>This is an example.</b> Have a look around, then start your own.</span>
+              <span><b>This is an example.</b> Have a look around, then start your own. Changes here aren’t saved.</span>
               <a href="/compare">Start your own</a>
+            </div>
+          )}
+          {preview === "shared" && (
+            <div className="banner shared" role="status">
+              <span>
+                <b>Someone shared this plan with you.</b> Have a look around. It isn’t saved on this device until you keep it
+                {hasSaved ? ", and keeping it replaces your own plan." : "."}
+              </span>
+              <span className="banner-acts">
+                <button className="btn dark sm" onClick={keepShared}>Keep it</button>
+                {hasSaved ? <button className="btn sm" onClick={backToMine}>Back to yours</button> : <a href="/compare" onClick={clearShareHash}>Start your own</a>}
+              </span>
             </div>
           )}
           {setup === "places" ? (

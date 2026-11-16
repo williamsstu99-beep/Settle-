@@ -153,3 +153,16 @@ export function decodePlan(s: string): Plan | null {
     return null;
   }
 }
+
+/**
+ * Where the plan on screen comes from. A shared link or the example opens as a
+ * preview that is never saved over the plan on this device until the user
+ * chooses to keep it.
+ */
+export type PlanSource = "shared" | "example" | "saved";
+export function planSource(hash: string, search: string): PlanSource {
+  const m = hash.match(/^#s=([\w-]+)/);
+  if (m && decodePlan(m[1])) return "shared";
+  if (new URLSearchParams(search).has("example")) return "example";
+  return "saved";
+}
