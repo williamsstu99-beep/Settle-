@@ -601,3 +601,4 @@ html:has(.app.sheet), body:has(.app.sheet) { height: 100%; overflow: hidden; ove
 .pm.m .mo-price small, .pm.m .mo-facts, .pm.m .mo-sub, .pm.m .mo-back { color: #C9D0D6; }
 .pm.m .mo-back b { color: #fff; }
 .pm.m .mo-acts > * { color: #fff; border-color: rgba(255, 255, 255, 0.24); background: transparent; }
+.app.sheet .card > .ch { padding-right: 48px; }

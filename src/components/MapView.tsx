@@ -220,7 +220,9 @@ const MobileHomeMarker = memo(function MobileHomeMarker({ o, inset, back, letter
   // Opening the card: nudge the map so the whole card is on screen (clear of the map buttons).
   useEffect(() => {
     if (!open || !map) return;
-    const raf = requestAnimationFrame(() => {
+    // Measure once the open card has finished growing (its scale-in animation), or it looks smaller than it is.
+    const grow = matchMedia("(prefers-reduced-motion: reduce)").matches ? 0 : 260;
+    const raf = window.setTimeout(() => {
       const c = card.current?.getBoundingClientRect(), m = map.getDiv().getBoundingClientRect();
       if (!c) return;
       const pad = 10, top = 52;
@@ -228,8 +230,8 @@ const MobileHomeMarker = memo(function MobileHomeMarker({ o, inset, back, letter
       const bottom = m.bottom - inset - pad;
       const dy = c.top < m.top + top ? c.top - m.top - top : c.bottom > bottom ? c.bottom - bottom : 0;
       if (dx || dy) map.panBy(dx, dy);
-    });
-    return () => cancelAnimationFrame(raf);
+    }, grow);
+    return () => clearTimeout(raf);
   }, [open, map, side, inset]);
   return (
     <div className={`pm m side-${side}${selected ? " sel" : ""}${open ? " open" : ""}`}>

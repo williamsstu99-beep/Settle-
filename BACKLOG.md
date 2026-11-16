@@ -65,7 +65,6 @@ Sources are in his overnight notes and morning report. Re-check prices before re
   - Options: A) shrink the map card and put details in the panel; B) fade cards while a route draws; C) let cards be dragged; D) make the map card tiny (name + price) and move the rest to the panel.
   - Suggested: D + A.
 - **Day planner, next steps:** depart times per day (the trip home at 5pm, not 8am; weekends), a timeline per property, "Along the way" stops added into the day, and a landing section showing days.
-- **Overview screen:** if it still feels cluttered, compact property cards in the overview (name, price, best time only).
 - **Day total:** not shown (no per-day totals rule). Revisit if people ask for "Day: 54 min".
 - **Share links and stop → stop mode choices:** share links keep days but not mode overrides on stop → stop trips.
 - **Optimise:** suggest the fastest mode per anchor.
@@ -117,3 +116,11 @@ Sources are in his overnight notes and morning report. Re-check prices before re
   - Setup notes: the server key needs Places API (New) as well as Routes.
   - Share opens the phone's share sheet (WhatsApp, Messenger…); desktop still copies the link. An old error line clears once routes or times come back.
   - Steve reads BACKLOG.md in full before every check.
+- **Panel tabs and "never stuck"** (owner's request, after testing on a phone).
+  - **Three tabs**, Properties / Anchors / My days, on phone and desktop. On a phone the map stays in view while you reorder anchors, with no scrolling down a long list.
+  - **Reorder, then save.** Dragging anchors shows the new order on the map as a draft. "Save to my days" names it and adds it to My days, where you pick Separate trips or a saved day, rename it or delete it. Reordering a saved day changes it.
+  - **Remove** (×) on every property card and anchor row in the panel, and delete on days, each with an **Undo** for 8 seconds. **Start fresh** (the circular arrow next to the house) clears the plan, also undoable.
+  - **Charcoal card on phones.** The selected property card on the phone map is the same charcoal as on desktop.
+  - **Smaller property cards:** about 15% on desktop, more compact again on phones.
+  - **Phone layout fixes.** The app is fixed to the screen, so the page never shifts sideways or scrolls behind the map. The map refits when the sheet settles at a new height with nothing selected, and keeps the top clear of the map buttons. An opened card is measured after it finishes growing, so it pans fully into view.
+  - **Steve's file:** a new "How the owner wants users to feel" section (in control, never stuck; calm and clear; confident).

@@ -35,6 +35,8 @@ Settle helps people pick a home by how it fits their life. Users add **life anch
   - Card sides come from `chooseSides` (layout.ts), recalculated only on data, selection or zoom changes, never on pan.
   - The zoom fits all homes, anchors and routes (into the part not covered by the phone sheet).
 - **Phones:** the panel is a bottom sheet over a full-screen map (peek / half / full; `core/sheet.ts`, `useSheet`). Desktop keeps the side panel.
+- **Panel tabs (phone and desktop):** Properties / Anchors / My days. Reordering anchors is a draft on the map until "Save to my days". Every property, anchor and day can be removed from the panel (never from the map), with Undo; "Start fresh" next to the house button clears the plan (also undoable). Users should always feel in control and never stuck (see Steve's file).
+- **The selected property card on the map is charcoal on phone and desktop.**
 - **Compare** steps from most to least travel and ends on the best home. "Step through routes" reveals one anchor at a time (toggle, default on). Reduced motion skips animation.
 - **Facebook Marketplace/groups:** no API and scraping is off the table. Parked idea: "paste a listing" with AI extraction.
 - **Budget:** Google spend is capped at **US$50/month** beyond the free allowances. Weigh every new API call against it.
