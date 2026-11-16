@@ -6,9 +6,17 @@ import { HeroMap } from "@/components/landing/HeroMap";
 import { SettleMark, Wordmark } from "@/components/Logo";
 import "./landing.css";
 
-/** Drop a real screenshot of the app at public/landing/hero.png and it replaces the illustration. */
+/**
+ * The hero shows, in order of preference: a screen recording of the app
+ * (public/landing/demo.mp4, with demo-poster.jpg while it loads), a screenshot
+ * (public/landing/hero.png), or the drawn illustration.
+ */
 const HERO = "/landing/hero.png";
-const hasHeroShot = existsSync(path.join(process.cwd(), "public", HERO));
+const DEMO = "/landing/demo.mp4";
+const DEMO_POSTER = "/landing/demo-poster.jpg";
+const has = (p: string) => existsSync(path.join(process.cwd(), "public", p));
+const hasDemo = has(DEMO);
+const hasHeroShot = has(HERO);
 
 const STEPS = [
   { n: "1", tint: "sky", title: "Set your life anchors", body: "Work, the gym, your partner’s place, the kids’ school. Name them and choose how you usually get there." },
@@ -50,7 +58,11 @@ export default function Landing() {
             <p className="l-small">Paste a TradeMe link or type any address.</p>
           </div>
           <div className="l-hero-art">
-            {hasHeroShot ? (
+            {hasDemo ? (
+              <div className="l-shot l-video">
+                <video src={DEMO} poster={has(DEMO_POSTER) ? DEMO_POSTER : undefined} autoPlay muted loop playsInline preload="metadata" aria-label="A short recording of Settle: two homes compared by their trips to work, the gym and school, with real routes on the map" />
+              </div>
+            ) : hasHeroShot ? (
               <div className="l-shot"><Image src={HERO} alt="Settle comparing three homes on a map, with routes to work, the gym and a friend’s place" fill sizes="(max-width: 900px) 100vw, 640px" priority /></div>
             ) : (
               <HeroMap />
