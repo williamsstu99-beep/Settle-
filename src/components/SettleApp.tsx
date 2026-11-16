@@ -169,6 +169,8 @@ export default function SettleApp() {
   const [renaming, setRenaming] = useState<{ id: string; name: string } | null>(null);
   /** The last removal (or Start fresh), so it can be undone for a few seconds. */
   const [undo, setUndo] = useState<{ label: string; plan: Plan; setup: "places" | "homes" | null } | null>(null);
+  /** "Start fresh" asks first: this is true while the "are you sure?" panel is showing. */
+  const [confirmFresh, setConfirmFresh] = useState(false);
   /** Paused while the Undo message is hovered or focused, so there's time to reach it. */
   const [undoHeld, setUndoHeld] = useState(false);
   useEffect(() => {
@@ -585,6 +587,7 @@ export default function SettleApp() {
   const backToMine = () => location.assign(location.pathname);
   /** Clear every property, anchor and day on this device (undoable for a few seconds). */
   const startFresh = () => {
+    setConfirmFresh(false);
     if (preview || (!anchors.length && !options.length && !days.length)) return; // a preview has its own way out (the banner)
     setUndo({ label: "Started fresh", plan, setup: setupState });
     deselect();
@@ -1064,7 +1067,7 @@ export default function SettleApp() {
             <button className="btn iconbtn" onClick={overview} aria-label="Back to the overview" title="Overview: every home and anchor">
               <Icon name="house2" size={16} />
             </button>
-            <button className="btn iconbtn" onClick={startFresh} disabled={!!preview || (!anchors.length && !options.length && !days.length)} aria-label="Start fresh: clear every property, anchor and day" title={preview ? "This plan isn’t yours yet: use the banner below" : "Start fresh (you can undo)"}>
+            <button className="btn iconbtn" onClick={() => setConfirmFresh((v) => !v)} aria-expanded={confirmFresh} disabled={!!preview || (!anchors.length && !options.length && !days.length)} aria-label="Start fresh: clear every property, anchor and day" title={preview ? "This plan isn’t yours yet: use the banner below" : "Start fresh"}>
               <Icon name="restart" size={16} />
             </button>
             <button className={`btn${running ? "" : " dark"}`} onClick={running ? skip : startCompare} disabled={!options.length || !anchors.length}>
@@ -1073,6 +1076,15 @@ export default function SettleApp() {
             <button className="btn" onClick={share} disabled={!options.length && !anchors.length}>{copied ? "Copied" : "Share"}</button>
           </div>
         </div>
+        {confirmFresh && (
+          <div className="confirm" role="alertdialog" aria-labelledby="confirm-fresh-t">
+            <p id="confirm-fresh-t"><b>Start fresh?</b> This clears every property, anchor and day on this device, photos included.</p>
+            <div className="confirm-acts">
+              <button className="btn danger-btn" autoFocus onClick={startFresh}>Clear everything</button>
+              <button className="btn" onClick={() => setConfirmFresh(false)}>Cancel</button>
+            </div>
+          </div>
+        )}
         {!setup && (
           <div className="tabs" role="group" aria-label="Show in the panel">
             {([["properties", "Properties", options.length], ["anchors", "Anchors", anchors.length], ["days", "My days", days.length]] as const).map(([id, label, n]) => (

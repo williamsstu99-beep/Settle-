@@ -33,7 +33,6 @@ The site is public now (Vercel Authentication was turned off), so step 1 is urge
 Include `/compare?example=1` in every post.
 
 ## Open decisions
-- **Start fresh:** it has Undo (10 seconds), but sits next to the house button, and a circular arrow can read as "refresh". Add an "are you sure?" step, or move it somewhere less tappable? Owner's call.
 - **Launch:** on Vercel Pro (decided). Domain, timing and audience are not decided yet (a soft launch to friends and students is suggested).
 - **Day planner on the map:** check on the live site with real Google that chained routes, the trip back home (draws, then settles to light grey) and step-through look right.
 
@@ -139,3 +138,4 @@ Sources are in his overnight notes and morning report. Re-check prices before re
     - The tabs are plain buttons with clear labels.
     - The Undo message lasts 10 seconds and pauses while hovered or focused.
     - No map refit while adding or editing an anchor.
+  - **Start fresh asks first** (owner's decision): tapping it shows "Start fresh? This clears every property, anchor and day on this device, photos included", with Clear everything or Cancel. Undo still works afterwards.

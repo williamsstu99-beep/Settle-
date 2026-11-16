@@ -606,3 +606,14 @@ html:has(.app.sheet), body:has(.app.sheet) { height: 100%; overflow: hidden; ove
 .dayline b { color: var(--fg); font-weight: 600; }
 .dayline .link, .savefull .link { font-size: 12.5px; text-decoration: underline; text-underline-offset: 2px; }
 .savefull { margin: 12px 2px 0; font-size: 12.5px; line-height: 1.5; }
+
+/* "Start fresh?" confirm under the header */
+.confirm { margin: 0 18px 12px; padding: 12px 14px; border-radius: 12px; background: #FBF3F2; border: 1px solid #F1D6D2; display: flex; flex-direction: column; gap: 10px; flex: none; animation: cardin 0.15s ease-out; }
+.confirm p { margin: 0; font-size: 13px; line-height: 1.5; color: var(--muted); }
+.confirm b { color: var(--fg); font-weight: 600; }
+.confirm-acts { display: flex; gap: 8px; }
+.danger-btn { background: var(--danger); border-color: var(--danger); color: #fff; }
+.danger-btn:hover { background: #a93226; border-color: #a93226; }
+.app.sheet .confirm { margin: 0 14px 8px; }
+.app.sheet .confirm-acts .btn { min-height: 40px; }
+@media (prefers-reduced-motion: reduce) { .confirm { animation: none; } }
