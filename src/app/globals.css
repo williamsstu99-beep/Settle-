@@ -602,3 +602,7 @@ html:has(.app.sheet), body:has(.app.sheet) { height: 100%; overflow: hidden; ove
 .pm.m .mo-back b { color: #fff; }
 .pm.m .mo-acts > * { color: #fff; border-color: rgba(255, 255, 255, 0.24); background: transparent; }
 .app.sheet .card > .ch { padding-right: 48px; }
+.dayline { margin: -4px 2px 10px; font-size: 12.5px; }
+.dayline b { color: var(--fg); font-weight: 600; }
+.dayline .link, .savefull .link { font-size: 12.5px; text-decoration: underline; text-underline-offset: 2px; }
+.savefull { margin: 12px 2px 0; font-size: 12.5px; line-height: 1.5; }
