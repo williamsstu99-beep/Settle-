@@ -61,7 +61,7 @@ Without keys the landing page and app still open, but the map, address search an
 2. Enable **Maps JavaScript API**, **Places API (New)** and **Routes API** (the Routes API covers both route lines and the route matrix). The server key also needs **Places API (New)** allowed for Along the way suggestions. Optionally enable the **Elevation API** and allow it on the server key for "Flat / Some hills / Hilly" on bike and walk routes.
 3. Create two API keys:
    - **Browser key** → `NEXT_PUBLIC_GOOGLE_MAPS_API_KEY`. Restrict it to *Websites* (your domains, plus `localhost:3000` for development) and to the Maps JavaScript and Places APIs.
-   - **Server key** → `GOOGLE_MAPS_SERVER_KEY`. Restrict it to the Routes API only.
+   - **Server key** → `GOOGLE_MAPS_SERVER_KEY`. Restrict it by API to the Routes API and Places API (New) (Along the way needs Places), plus Elevation if you use it. No website restriction.
 4. Set budget alerts and quota caps in the console so a traffic spike can't surprise you.
 
 ### TradeMe (optional)

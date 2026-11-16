@@ -488,7 +488,7 @@ export default function MapView(p: Props) {
       defaultZoom={12}
       gestureHandling="greedy"
       disableDefaultUI
-      zoomControl
+      zoomControl={!p.mobile /* phones pinch */}
       clickableIcons={false}
       mapId={MAP_ID}
       styles={MAP_ID ? undefined : MAP_STYLE}

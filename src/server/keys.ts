@@ -32,7 +32,7 @@ export function explainError(e: unknown): { error: string; detail?: string } {
   }
   const m = e.message;
   if (/referer|referrer/i.test(m)) {
-    return { error: "Google blocked the server's request because the server key is restricted to websites. Use a separate server key restricted to the Routes API only (no website restriction).", detail: m };
+    return { error: "Google blocked the server's request because the server key is restricted to websites. Use a separate server key restricted by API (Routes API and Places API (New)), with no website restriction.", detail: m };
   }
   if (/not been used|disabled|not enabled|SERVICE_DISABLED/i.test(m)) {
     return { error: "The Routes API isn't enabled for this key's Google Cloud project. Enable it under APIs & Services → Library.", detail: m };

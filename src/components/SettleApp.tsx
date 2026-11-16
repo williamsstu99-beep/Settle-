@@ -1033,6 +1033,7 @@ export default function SettleApp() {
               {places}
             </>
           )}
+          <p className="side-foot"><Link href="/privacy">Privacy</Link> · Travel times by Google Maps</p>
         </div>
       </aside>
       <main className="mapwrap">

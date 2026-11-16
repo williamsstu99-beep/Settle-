@@ -115,7 +115,7 @@ export default function Landing() {
 
       <footer className="l-wrap l-foot">
         <span>© Settle · Made in Aotearoa</span>
-        <span>Travel times by Google Maps</span>
+        <span>Travel times by Google Maps · <Link href="/privacy">Privacy</Link></span>
       </footer>
     </div>
   );
