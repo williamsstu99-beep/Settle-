@@ -520,3 +520,84 @@ button:disabled { cursor: not-allowed; }
 .side-foot a { color: var(--muted); text-decoration: underline; text-underline-offset: 2px; }
 .app.sheet .banner .btn.sm { min-height: 40px; padding: 9px 14px; font-size: 14px; }
 .app.sheet .banner a { padding: 10px 2px; }
+
+/* ---------- panel tabs: Properties / Anchors / My days ---------- */
+.tabs { display: flex; gap: 3px; margin: 0 18px 12px; padding: 3px; background: var(--soft); border-radius: 11px; flex: none; }
+.tabs button { flex: 1; display: inline-flex; justify-content: center; align-items: center; gap: 6px; padding: 7px 6px; border-radius: 8px; font-size: 13px; font-weight: 600; color: var(--muted); white-space: nowrap; }
+.tabs button:hover { color: var(--fg); }
+.tabs button.on { background: #fff; color: var(--fg); box-shadow: 0 1px 2px rgba(20, 24, 31, 0.1), 0 1px 6px rgba(20, 24, 31, 0.06); }
+.tn { font-size: 11px; font-weight: 700; color: var(--muted); background: rgba(44, 48, 56, 0.08); border-radius: 999px; min-width: 18px; padding: 0 5px; line-height: 18px; text-align: center; }
+.tabs button.on .tn { background: var(--fg); color: #fff; }
+
+/* remove (×) on property cards in the panel */
+.card { position: relative; }
+.card > .ch { padding-right: 40px; }
+.cardx { position: absolute; top: 8px; right: 6px; z-index: 1; }
+.cardx:hover { color: var(--danger); background: #fff; }
+.arow-wrap .x:hover { color: var(--danger); }
+
+/* property cards ~15% smaller on desktop */
+.card { margin-bottom: 8px; border-radius: 12px; }
+.ch { padding: 11px 13px; gap: 7px; }
+.ch .t b { font-size: 14.5px; }
+.ch .t span { font-size: 12px; }
+.letter { width: 21px; height: 21px; font-size: 11px; border-radius: 6px; }
+.chips { gap: 5px; padding-left: 31px; }
+.chip { font-size: 11.5px; padding: 3px 8px; border-radius: 6px; }
+.cb { margin: 0 13px; padding: 12px 0 14px; }
+
+/* Anchors tab: what the order means, and saving it */
+.orderbar .hint { margin: 0 2px 10px; font-size: 12.5px; line-height: 1.5; }
+.orderbar .hint b { color: var(--fg); font-weight: 600; }
+.orderbar .link { font-size: 12.5px; text-decoration: underline; text-underline-offset: 2px; }
+.savebtn { width: 100%; margin-top: 12px; }
+.namebar { display: flex; align-items: center; gap: 8px; margin-top: 12px; width: 100%; }
+.namebar .text { flex: 1; min-width: 0; }
+
+/* My days tab */
+.dayslist { display: flex; flex-direction: column; gap: 8px; }
+.dayslist .sec { margin-top: 2px; }
+.dayrow { display: flex; align-items: center; gap: 10px; padding: 10px 8px 10px 12px; border-radius: 12px; background: var(--soft); border: 1.5px solid transparent; text-align: left; width: 100%; }
+.dayrow.on { background: #fff; border-color: var(--fg); }
+.dayrow-main { flex: 1; min-width: 0; display: flex; align-items: center; gap: 10px; text-align: left; }
+.dayrow .t { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.dayrow .t b { font-size: 14px; font-weight: 600; }
+.dayrow .t span { font-size: 12px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.radio { width: 16px; height: 16px; border-radius: 50%; border: 2px solid var(--line2); flex: none; background: #fff; }
+.dayrow.on .radio, .dayrow-main[aria-pressed="true"] .radio { border-color: var(--fg); background: var(--fg); box-shadow: inset 0 0 0 3px #fff; }
+.dayrow .namebar { margin-top: 0; }
+.daysempty { margin: 4px 2px; line-height: 1.5; }
+.daysempty .link { text-decoration: underline; text-underline-offset: 2px; }
+
+/* Undo after removing something or starting fresh */
+.toast { position: fixed; left: 50%; bottom: 22px; transform: translateX(-50%); z-index: 60; display: flex; align-items: center; gap: 16px; background: #2C3038; color: #fff; border-radius: 12px; padding: 10px 12px 10px 16px; font-size: 13.5px; box-shadow: 0 8px 28px rgba(20, 24, 31, 0.25); animation: cardin 0.15s ease-out; max-width: calc(100vw - 32px); }
+.toast button { color: #A9C2EE; font-weight: 700; padding: 4px 6px; }
+@media (prefers-reduced-motion: reduce) { .toast { animation: none; } }
+
+/* ---------- phones ---------- */
+/* The app is fixed to the screen: the page itself never scrolls or shifts sideways. */
+html:has(.app.sheet), body:has(.app.sheet) { height: 100%; overflow: hidden; overscroll-behavior: none; }
+.app.sheet { position: fixed; inset: 0; height: auto; width: 100%; }
+.app.sheet .tabs { margin: 0 14px 8px; }
+.app.sheet .tabs button { min-height: 40px; font-size: 14px; }
+.app.sheet .toast { top: 14px; bottom: auto; }
+.app.sheet .cardx { top: 2px; right: 2px; }
+/* more compact property cards in the sheet */
+.app.sheet .ch { padding: 10px 12px; gap: 6px; }
+.app.sheet .ch .t b { font-size: 14.5px; }
+.app.sheet .chips { padding-left: 0; }
+.app.sheet .dayrow { min-height: 56px; }
+
+/* phone map: the selected home is the same charcoal card as on desktop */
+.pm.m.sel .mtab { background: #434C55; color: #fff; }
+.pm.m.sel .mchev { color: rgba(255, 255, 255, 0.55); }
+.pm.m.open .mopen { border-top-color: rgba(255, 255, 255, 0.12); }
+.pm.m .mopen .pc-photo { background: #535D67; }
+.pm.m .mopen .pc-photo.empty { background: #4C5660; }
+.pm.m .mopen .pc-drop { color: #E3E7EB; border-color: rgba(255, 255, 255, 0.28); }
+.pm.m .mopen .pc-drop span { color: #C9D0D6; }
+.pm.m .mopen .pc-drop b { color: #fff; }
+.pm.m .mo-price { color: #fff; }
+.pm.m .mo-price small, .pm.m .mo-facts, .pm.m .mo-sub, .pm.m .mo-back { color: #C9D0D6; }
+.pm.m .mo-back b { color: #fff; }
+.pm.m .mo-acts > * { color: #fff; border-color: rgba(255, 255, 255, 0.24); background: transparent; }

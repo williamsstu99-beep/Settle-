@@ -94,7 +94,8 @@ function FitBounds({ points, fitKey, inset }: { points: LatLng[]; fitKey: string
     const div = map.getDiv(), under = insetRef.current;
     // Fit into the part of the map the sheet doesn't cover.
     const pad = fitPadding(div.offsetWidth || 800, Math.max(200, (div.offsetHeight || 600) - under));
-    map.fitBounds(b, { ...pad, bottom: pad.bottom + under });
+    // On phones (a sheet below), keep the top clear of the floating map buttons.
+    map.fitBounds(b, { ...pad, top: under ? Math.max(pad.top, 64) : pad.top, bottom: pad.bottom + under });
     // fitKey decides when we refit; points are read fresh at that moment.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [map, fitKey]);
