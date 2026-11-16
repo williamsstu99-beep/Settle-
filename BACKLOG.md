@@ -4,13 +4,13 @@ Keep this current: every PR updates it (move items to Done, add what was learned
 Budget: **Google Maps Platform max US$50/month** beyond the free allowances.
 
 ## Next up
-- **Landing demo video:** the hero now plays `public/landing/demo.mp4` (with `demo-poster.jpg`) when it exists, before `hero.png` or the illustration. The recording (owner's photos on mock Grey Lynn and Kingsland addresses; Gym at Westfield Newmarket, Work at Commercial Bay, Grey Lynn School) is waiting on access to the live site, since it needs the real Google map. Also for the owner's Upwork proposal.
 
 ## Open decisions
 - **Day planner on the map:** check on a Vercel preview with real Google that chained routes, the trip back home (draws, then settles to light grey) and step-through look right.
 - **Launch plan:** the owner will launch on **Vercel Pro** (US$20/month, needed for any income). Audience (soft launch to friends and students suggested), timing and domain not decided yet.
 
 ## Parked (later)
+- **Phone demo video:** the owner wants desktop only for now. A phone clip showing the bottom sheet could follow for Upwork.
 - **Sheet polish after real-phone testing:** check iPhone Safari (address bar resizing, the keyboard over forms, safe areas) and Android Chrome on the preview. If dragging on the header feels too easy to trigger, limit it to the handle.
 - **Mobile, zoomed far out:** cards keep a fixed size at every zoom, so far out they can still overlap. Possible later: shrink anchor cards to just the tab below a zoom level.
 - **Budget guard (US$50/month)** (parked by the owner, keep): do these outside the code, then add an app-side guard.
@@ -50,3 +50,4 @@ Budget: **Google Maps Platform max US$50/month** beyond the free allowances.
 - Steve now knows the owner background (web designer on Upwork, wants location-independent income while travelling, aiming big). Auracle (a friend's AI training company moving into automations) added as background only.
 - Peak range on tap: "5–9 min at peak" loads only when you tap "Peak range" on a drive (it was 2 Routes Pro requests per drive for every home you selected). Steve's estimate: the Google bill at 1,000 users drops from about US$240 to about US$80 a month.
 - Phone bottom sheet (the owner chose option A over a pinned map): full-screen map with the panel as a sheet at peek / half / full. Drag the handle or header, tap the handle, swipe the list. It drops to half when you pick a home, to peek for Compare, and opens to full for typing. Map fitting and opened cards keep clear of it.
+- Landing demo video: a 26-second desktop recording of the live site (real Google map) plays in the hero (`public/landing/demo.mp4`, 1.2 MB, with `demo-poster.jpg`). The plan: Work at Commercial Bay, Gym at Westfield Newmarket, Grey Lynn School (walk), and the owner's own photos on mock addresses (Richmond Road, Grey Lynn; Bond Street, Kingsland). It shows Compare, the peak range, switching to Transit (Bus 105) and the photo cards. A higher-quality copy was made for the owner's Upwork proposal. Replaces the planned hero screenshot. Vercel Authentication is now off, so the site is public.
