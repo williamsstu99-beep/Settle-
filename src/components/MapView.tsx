@@ -91,9 +91,11 @@ function FitBounds({ points, fitKey, inset }: { points: LatLng[]; fitKey: string
     }
     const b = new google.maps.LatLngBounds();
     points.forEach((p) => b.extend(p));
-    const div = map.getDiv(), under = insetRef.current;
+    const div = map.getDiv(), h = div.offsetHeight || 600;
+    // Never squeeze the fit into a sliver: leave at least ~260px of map above the phone sheet.
+    const under = Math.max(0, Math.min(insetRef.current, h - 260));
     // Fit into the part of the map the sheet doesn't cover.
-    const pad = fitPadding(div.offsetWidth || 800, Math.max(200, (div.offsetHeight || 600) - under));
+    const pad = fitPadding(div.offsetWidth || 800, Math.max(200, h - under));
     // On phones (a sheet below), keep the top clear of the floating map buttons.
     map.fitBounds(b, { ...pad, top: under ? Math.max(pad.top, 64) : pad.top, bottom: pad.bottom + under });
     // fitKey decides when we refit; points are read fresh at that moment.
