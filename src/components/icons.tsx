@@ -34,6 +34,8 @@ const P = {
   share: <><circle cx="12" cy="3.5" r="1.8" /><circle cx="4" cy="8" r="1.8" /><circle cx="12" cy="12.5" r="1.8" /><path d="m5.6 7.1 4.8-2.7M5.6 8.9l4.8 2.7" /></>,
   phone: <><rect x="4.5" y="1.5" width="7" height="13" rx="1.6" /><path d="M7 12.2h2" /></>,
   desktop: <><rect x="1.5" y="2.5" width="13" height="8.5" rx="1.2" /><path d="M6 14h4M8 11v3" /></>,
+  pencil: <path d="M3 13l.8-3 6.7-6.7a1.4 1.4 0 0 1 2 2L5.8 12z" />,
+  restart: <><path d="M3.2 7.5a5 5 0 1 0 1.6-3.6" /><path d="M3 2.6v3.2h3.2" /></>,
   logo: <><path d="M2.5 7.5 8 3l5.5 4.5V13h-11z" /><circle cx="8" cy="9.4" r="1.6" /></>,
 } as const;
 

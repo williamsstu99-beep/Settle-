@@ -21,7 +21,7 @@ The site is public now (Vercel Authentication was turned off), so step 1 is urge
 - **Along the way costs less without ratings:** asking for `rating`/`userRatingCount` puts Text Search in Enterprise (1k free, then US$35/1k). Without them it's Pro (5k free, then US$32/1k). Offer ratings on tap, or drop them. Size S.
 - **Watch the rate limits after student posts:** 20 route requests a minute per IP suits most people, but hundreds of students behind one uni address could hit it. The limiter is per server instance, so it's softer in practice. Check the Vercel logs after any AUSA or AuSM post.
 - **Check Google's caching terms** for the Routes API against the 3-day server cache and the browser cache. Location data from Directions/Geocoding may be cached up to 30 days, and place IDs may be cached. No Routes-specific clause was found yet.
-- **Test on real phones** with real Google: iPhone Safari (address bar, keyboard over forms, safe areas) and Android Chrome. Setup, Compare, a shared link opened on a second phone, a TradeMe link.
+- **Test on real phones** (also: tabs, Start fresh, the Undo message, and the map refitting when the sheet changes height) with real Google: iPhone Safari (address bar, keyboard over forms, safe areas) and Android Chrome. Setup, Compare, a shared link opened on a second phone, a TradeMe link.
 - **Turn on Vercel Web Analytics** (no cookies) to count visitors.
 
 ### Soft launch plan (suggested by Steve, all free)
@@ -53,9 +53,13 @@ Sources are in his overnight notes and morning report. Re-check prices before re
     - No open NZ movers or contents-insurance affiliate programme was found. Commission Factory is the NZ network to watch.
   - **Scale:** a commute-check widget for listing sites, priced like Walk Score or TravelTime: free for people, paid licences or embeds for businesses using their own Google key. Spin-offs on the same engine: a relocation planner, job-offer comparer, school-zone tool, nomad base finder, and "Settle for my brand" client builds.
   - **Suggested order:** the Upwork case study and one referral link now, the Plus pass at about 1,000 users a month, then a widget pilot with one paying client.
+- **Draft orders cost the same as the old "new day":** each new order needs new stop-to-stop routes for every property (cached after). No new kinds of Google calls. Worth watching once people play with orders.
 - **Mobile pattern:** a three-height bottom sheet over a usable map is the standard (built, see Done). On the web the hard parts are iOS scroll chaining and drag-vs-scroll, handled in `useSheet`.
 
 ## Parked (later)
+- **Duplicate a saved day** (a "save as new" while a saved day is showing).
+- **Keep an unsaved order across a reload,** if people ask (it lives in memory until "Save to my days").
+- **Refit only if the user hasn't panned:** the sheet-height refit is skipped while adding or editing an anchor, but still replaces a manual pan or zoom.
 - **Phone demo video:** desktop only for now; a phone clip showing the bottom sheet could follow for Upwork.
 - **Sheet polish after real-phone testing:** if dragging on the header feels too easy to trigger, limit it to the handle.
 - **Mobile, zoomed far out:** cards keep a fixed size at every zoom, so far out they can overlap. Possible: shrink anchor cards to just the tab below a zoom level.
@@ -65,7 +69,6 @@ Sources are in his overnight notes and morning report. Re-check prices before re
   - Options: A) shrink the map card and put details in the panel; B) fade cards while a route draws; C) let cards be dragged; D) make the map card tiny (name + price) and move the rest to the panel.
   - Suggested: D + A.
 - **Day planner, next steps:** depart times per day (the trip home at 5pm, not 8am; weekends), a timeline per property, "Along the way" stops added into the day, and a landing section showing days.
-- **Overview screen:** if it still feels cluttered, compact property cards in the overview (name, price, best time only).
 - **Day total:** not shown (no per-day totals rule). Revisit if people ask for "Day: 54 min".
 - **Share links and stop → stop mode choices:** share links keep days but not mode overrides on stop → stop trips.
 - **Optimise:** suggest the fastest mode per anchor.
@@ -117,3 +120,22 @@ Sources are in his overnight notes and morning report. Re-check prices before re
   - Setup notes: the server key needs Places API (New) as well as Routes.
   - Share opens the phone's share sheet (WhatsApp, Messenger…); desktop still copies the link. An old error line clears once routes or times come back.
   - Steve reads BACKLOG.md in full before every check.
+- **Panel tabs and "never stuck"** (owner's request, after testing on a phone).
+  - **Three tabs**, Properties / Anchors / My days, on phone and desktop. On a phone the map stays in view while you reorder anchors, with no scrolling down a long list.
+  - **Reorder, then save.** Dragging anchors shows the new order on the map as a draft. "Save to my days" names it and adds it to My days, where you pick Separate trips or a saved day, rename it or delete it. Reordering a saved day changes it.
+  - **Remove** (×) on every property card and anchor row in the panel, and delete on days, each with an **Undo** for 8 seconds. **Start fresh** (the circular arrow next to the house) clears the plan, also undoable.
+  - **Charcoal card on phones.** The selected property card on the phone map is the same charcoal as on desktop.
+  - **Smaller property cards:** about 15% on desktop, more compact again on phones.
+  - **Phone layout fixes.** The app is fixed to the screen, so the page never shifts sideways or scrolls behind the map. The map refits when the sheet settles at a new height with nothing selected, and keeps the top clear of the map buttons. An opened card is measured after it finishes growing, so it pans fully into view.
+  - **Steve's file:** a new "How the owner wants users to feel" section (in control, never stuck; calm and clear; confident).
+  - **Steve's review follow-ups:**
+    - Start fresh is off while a shared link or the example is showing, so it can't overwrite the device's plan.
+    - Undo returns to the setup step you were on.
+    - Any edit after a removal ends the Undo, so it never throws away later work.
+    - Fewer than 2 anchors clears the draft and any day.
+    - No × on properties while Compare runs.
+    - A visible line at the 6-day limit, a "On the map: <day>" line on Properties, and clearer copy in an empty My days.
+    - The tabs are plain buttons with clear labels.
+    - The Undo message lasts 10 seconds and pauses while hovered or focused.
+    - No map refit while adding or editing an anchor.
+  - **Start fresh asks first** (owner's decision): tapping it shows "Start fresh? This clears every property, anchor and day on this device, photos included", with Clear everything or Cancel. Undo still works afterwards.

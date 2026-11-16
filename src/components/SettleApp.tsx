@@ -158,7 +158,26 @@ export default function SettleApp() {
   const { anchors, options } = plan;
   const overrides = useMemo(() => plan.overrides ?? {}, [plan.overrides]);
   const days = useMemo(() => plan.days ?? [], [plan.days]);
-  const day = useMemo(() => activeDay({ days, dayId: plan.dayId }), [days, plan.dayId]);
+  const savedDay = useMemo(() => activeDay({ days, dayId: plan.dayId }), [days, plan.dayId]);
+  /** An order being tried out in the Anchors tab: shown on the map, but not in My days until saved. */
+  const [orderDraft, setOrderDraft] = useState<Day | null>(null);
+  const day = savedDay ?? orderDraft;
+  /** Which part of the panel is showing. */
+  const [tab, setTab] = useState<"properties" | "anchors" | "days">("properties");
+  /** The name being typed for "Save to my days" (null when not saving), and a day being renamed. */
+  const [naming, setNaming] = useState<string | null>(null);
+  const [renaming, setRenaming] = useState<{ id: string; name: string } | null>(null);
+  /** The last removal (or Start fresh), so it can be undone for a few seconds. */
+  const [undo, setUndo] = useState<{ label: string; plan: Plan; setup: "places" | "homes" | null } | null>(null);
+  /** "Start fresh" asks first: this is true while the "are you sure?" panel is showing. */
+  const [confirmFresh, setConfirmFresh] = useState(false);
+  /** Paused while the Undo message is hovered or focused, so there's time to reach it. */
+  const [undoHeld, setUndoHeld] = useState(false);
+  useEffect(() => {
+    if (!undo || undoHeld) return;
+    const t = setTimeout(() => setUndo(null), 10000);
+    return () => clearTimeout(t);
+  }, [undo, undoHeld]);
   // No places at all (e.g. all removed) always means step 1.
   const setup = setupState ?? (!anchors.length && !plan.example ? "places" : null);
   const letter = useCallback((id: string) => letterOf(Math.max(0, options.findIndex((o) => o.id === id))), [options]);
@@ -181,7 +200,11 @@ export default function SettleApp() {
   useEffect(() => saveMap(LEGS_KEY, legs, 300), [legs]);
   useEffect(() => saveMap(TIMES_KEY, times, 1200), [times]);
 
-  const update = (fn: (p: Plan) => Plan) => setPlan((p) => ({ ...fn(p), example: false }));
+  /** Change the plan. Any change other than the removal itself ends the chance to undo, so Undo never throws away later edits. */
+  const update = (fn: (p: Plan) => Plan, keepUndo = false) => {
+    if (!keepUndo) setUndo(null);
+    setPlan((p) => ({ ...fn(p), example: false }));
+  };
 
   const cmp = useMemo(() => compare(options, anchors, legs, times, overrides, day), [options, anchors, legs, times, overrides, day]);
   /** Trips per home for the day shown (stops in order, then anchors on their own). */
@@ -391,8 +414,19 @@ export default function SettleApp() {
     update((p) => ({ ...p, anchors: [...p.anchors, a] }));
     setAlong(null);
   };
+  const removeAnchor = (id: string) => {
+    const a = anchors.find((x) => x.id === id);
+    setUndo({ label: `Removed ${a?.name ?? "anchor"}`, plan, setup: setupState });
+    // With fewer than two anchors left there's no order to plan: drop the draft and go back to separate trips.
+    const tooFew = anchors.length - 1 < 2;
+    update((p) => { const anchors = p.anchors.filter((x) => x.id !== id); return { ...p, anchors, days: pruneDays(p.days ?? [], anchors), dayId: tooFew ? null : p.dayId }; }, true);
+    setOrderDraft((d) => (!d || tooFew ? null : { ...d, order: d.order.filter((x) => x !== id), skip: d.skip.filter((x) => x !== id) }));
+    if (edit === id) setEdit(null);
+  };
   const removeOption = (id: string) => {
-    update((p) => ({ ...p, options: p.options.filter((x) => x.id !== id), overrides: Object.fromEntries(Object.entries(p.overrides ?? {}).filter(([k]) => !k.startsWith(`${id}|`) && !k.endsWith(`|${id}`))) }));
+    const o = options.find((x) => x.id === id);
+    setUndo({ label: `Removed ${o?.title ?? "property"}`, plan, setup: setupState });
+    update((p) => ({ ...p, options: p.options.filter((x) => x.id !== id), overrides: Object.fromEntries(Object.entries(p.overrides ?? {}).filter(([k]) => !k.startsWith(`${id}|`) && !k.endsWith(`|${id}`))) }), true);
     if (selectedState === id) setSelectedState(null);
   };
   const fetchListing = async (url: string): Promise<Option> => {
@@ -431,10 +465,12 @@ export default function SettleApp() {
       return setError("There's no room left on this device for more photos. Remove a few and try again.");
     }
     setError(null);
+    setUndo(null);
     setPlan(next);
   };
   const startCompare = () => {
     const order = [...cmp.rows].reverse().map((r) => r.option.id); // most travel first, best last
+    setTab("properties");
     setEdit(null);
     setAdding(false);
     setError(null);
@@ -485,23 +521,36 @@ export default function SettleApp() {
   };
 
   /* ---------- your day: anchors in order, as one trip ---------- */
-  const setDay = (fn: (d: Day) => Day) => update((p) => ({ ...p, days: (p.days ?? []).map((d) => (d.id === p.dayId ? fn(d) : d)) }));
-  /** Start a new day from the anchors in the given order (all of them in it, back home at the end). */
-  const newDay = (order: string[] = anchors.map((a) => a.id)) => {
-    if (days.length >= MAX_DAYS) return setError(`You can save up to ${MAX_DAYS} days.`);
-    const d: Day = { id: newId(), name: newDayName(days), order, skip: [], home: true };
-    update((p) => ({ ...p, days: [...(p.days ?? []), d], dayId: d.id }));
+  const setDay = (fn: (d: Day) => Day) => {
+    if (savedDay) update((p) => ({ ...p, days: (p.days ?? []).map((d) => (d.id === p.dayId ? fn(d) : d)) }));
+    else setOrderDraft((d) => (d ? fn(d) : d));
   };
+  /** Save the order on the map (or the anchors as listed) to My days, and show it. */
+  const saveOrder = (name: string) => {
+    if (days.length >= MAX_DAYS) return setError(`You can save up to ${MAX_DAYS} days. Delete one in My days first.`);
+    const base = orderDraft ?? { order: anchors.map((a) => a.id), skip: [], home: true };
+    const d: Day = { id: newId(), name: name.trim().slice(0, 30) || newDayName(days), order: base.order, skip: base.skip, home: base.home };
+    update((p) => ({ ...p, days: [...(p.days ?? []), d], dayId: d.id }));
+    setOrderDraft(null);
+    setNaming(null);
+  };
+  const renameDay = (id: string, name: string) => update((p) => ({ ...p, days: (p.days ?? []).map((d) => (d.id === id ? { ...d, name: name.slice(0, 30) } : d)) }));
   const chooseDay = (id: string | null) => {
+    setOrderDraft(null);
     update((p) => ({ ...p, dayId: id }));
     setAlong(null);
     setEpoch((e) => e + 1);
   };
-  const deleteDay = (id: string) => update((p) => ({ ...p, days: (p.days ?? []).filter((d) => d.id !== id), dayId: p.dayId === id ? null : p.dayId }));
+  const deleteDay = (id: string) => {
+    const d = days.find((x) => x.id === id);
+    setUndo({ label: `Deleted “${d?.name ?? "day"}”`, plan, setup: setupState });
+    update((p) => ({ ...p, days: (p.days ?? []).filter((x) => x.id !== id), dayId: p.dayId === id ? null : p.dayId }), true);
+  };
   /** Dropping anchors in a new order is what plans the day: with no day yet, it starts one. */
   const reorder = useReorder((_scope, order) => {
+    // Reordering a saved day changes it; otherwise it's an order to try out, saved only with "Save to my days".
     if (day) setDay((d) => reorderDay(d, order));
-    else if (days.length < MAX_DAYS) newDay(order);
+    else setOrderDraft({ id: "draft", name: "", order, skip: [], home: true });
     setEpoch((e) => e + 1);
   });
 
@@ -536,6 +585,36 @@ export default function SettleApp() {
   };
   /** Leave a shared plan without saving it: reload the app on the plan saved on this device, so nothing from the shared plan lingers. */
   const backToMine = () => location.assign(location.pathname);
+  /** Clear every property, anchor and day on this device (undoable for a few seconds). */
+  const startFresh = () => {
+    setConfirmFresh(false);
+    if (preview || (!anchors.length && !options.length && !days.length)) return; // a preview has its own way out (the banner)
+    setUndo({ label: "Started fresh", plan, setup: setupState });
+    deselect();
+    setEdit(null);
+    setAdding(false);
+    setAlong(null);
+    setModesOpen(null);
+    setOrderDraft(null);
+    setNaming(null);
+    setPreview(null);
+    setSharedKept(false);
+    clearShareHash();
+    setPlan({ ...EMPTY_PLAN });
+    setSetup("places");
+    setHomeForm(null);
+    setTab("properties");
+    setFitKey(newId());
+  };
+  const undoLast = () => {
+    if (!undo) return;
+    const p = undo.plan;
+    setPlan(p);
+    // Back to the step you were on (never ahead of it); only step back if the restored plan needs it.
+    setSetup(!p.anchors.length ? "places" : undo.setup);
+    setUndo(null);
+    setFitKey(newId());
+  };
   /** The way out: back to the overview of every home and anchor, with nothing open. */
   const overview = () => {
     deselect();
@@ -554,7 +633,10 @@ export default function SettleApp() {
     if (adding) addAnchorAt(p);
     else deselect();
   };
-  const onAnchorClick = (id: string) => setEdit((e) => (e === id ? null : id));
+  const onAnchorClick = (id: string) => {
+    setTab("anchors");
+    setEdit((e) => (e === id ? null : id));
+  };
   /** The selected card's chevron: open its listing, or bring its panel card into view. */
   const showDetail = (id: string) => {
     const o = options.find((x) => x.id === id);
@@ -573,6 +655,12 @@ export default function SettleApp() {
   const { setSnap } = sheet;
   // Picking a home from a full sheet drops it to half, so its routes show.
   useEffect(() => { if (narrow && selected) setSnap((s) => (s === "full" ? "half" : s)); }, [narrow, selected, setSnap]);
+  // When the sheet settles at a new height with nothing selected, refit to the map that's still showing.
+  useEffect(() => {
+    if (narrow && !selected && !running && !adding && !edit) setFitKey(newId()); // not while dropping a pin or editing an anchor
+    // Only on a new resting height, not on every selection or Compare change.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sheet.snap]);
   // Compare plays on the map: lower the sheet to watch it.
   useEffect(() => { if (narrow && running) setSnap("peek"); }, [narrow, running, setSnap]);
 
@@ -664,7 +752,7 @@ export default function SettleApp() {
   /** Anchors you can drag: the day's stops, or (with no day yet) every anchor, since dragging starts a day. */
   const stops = dayStops(anchors, day);
   const draggableIds = (day ? stops.stops : anchors).map((a) => a.id);
-  const canDrag = anchors.length > 1 && (!!day || days.length < MAX_DAYS);
+  const canDrag = anchors.length > 1;
   const grip = (scope: string, a: Anchor) =>
     canDrag && draggableIds.includes(a.id) ? (
       <button className="grip" {...reorder.handle(scope, a.id, draggableIds, a.name)}><Icon name="grip" size={14} /></button>
@@ -755,6 +843,7 @@ export default function SettleApp() {
     }
     return (
       <div key={o.id} id={`card-${o.id}`} className={`card${isSel ? " sel" : ""}${open ? " open" : ""}`}>
+        {!running && <button className="x cardx" onClick={() => removeOption(o.id)} aria-label={`Remove ${o.title}`} title="Remove"><Icon name="close" size={13} /></button>}
         <button className="ch" aria-expanded={open} onClick={() => selectHome(o.id, true)}>
           <span className="ch-top">
             <span className="letter">{letter(o.id)}</span>
@@ -807,6 +896,7 @@ export default function SettleApp() {
           <Icon name="chev" size={14} className="chev" />
         </button>
         {skipButton(a)}
+        <button className="x" onClick={() => removeAnchor(a.id)} aria-label={`Remove ${a.name}`} title="Remove"><Icon name="close" size={13} /></button>
       </div>
       {edit === a.id && (
         <div className="edit">
@@ -825,7 +915,7 @@ export default function SettleApp() {
             ))}
           </div>
           <div className="edit-foot">
-            <button className="link danger" onClick={() => { update((p) => { const anchors = p.anchors.filter((x) => x.id !== a.id); return { ...p, anchors, days: pruneDays(p.days ?? [], anchors) }; }); setEdit(null); }}>Remove</button>
+            <button className="link danger" onClick={() => removeAnchor(a.id)}>Remove</button>
             <button className="link" onClick={() => setEdit(null)}>Done</button>
           </div>
         </div>
@@ -833,23 +923,75 @@ export default function SettleApp() {
     </div>
   );
 
-  /** Separate trips (the default) or one of your saved days. */
-  const dayBar = anchors.length > 1 && (
-    <div className="daybar">
-      <div className="days" role="group" aria-label="How your trips are planned">
-        <button aria-pressed={!day} onClick={() => chooseDay(null)} title="Every life anchor is its own trip from home">Separate trips</button>
-        {days.map((d) => (
-          <button key={d.id} aria-pressed={d.id === day?.id} onClick={() => chooseDay(d.id)}>{d.name}</button>
-        ))}
-        {days.length < MAX_DAYS && <button className="newday" onClick={() => newDay()}><Icon name="plus" size={12} />New day</button>}
-      </div>
-      {day ? (
-        <div className="dayedit">
-          <input className="text sm" value={day.name} maxLength={30} aria-label="Name of this day" onChange={(e) => setDay((d) => ({ ...d, name: e.target.value }))} onBlur={(e) => !e.target.value.trim() && setDay((d) => ({ ...d, name: newDayName(days.filter((x) => x.id !== d.id)) }))} />
-          <button className="link danger" onClick={() => deleteDay(day.id)}>Delete day</button>
-        </div>
+  /** Above the anchors: what the order means right now. */
+  const orderBar = !setup && anchors.length > 1 && (
+    <div className="orderbar">
+      {savedDay ? (
+        <p className="hint">Showing <b>{savedDay.name}</b>. Drag to change its order. <button className="link" onClick={() => chooseDay(null)}>Back to separate trips</button></p>
+      ) : orderDraft ? (
+        <p className="hint"><b>New order, not saved yet.</b> It’s on the map now; save it to keep it after a reload. <button className="link" onClick={() => setOrderDraft(null)}>Clear it</button></p>
       ) : (
-        <p className="hint dayhint">Drag your anchors into the order you visit them to plan a day: home, then each stop in turn.</p>
+        <p className="hint">Drag your anchors into the order you visit them to see your day as one trip: home, then each stop in turn.</p>
+      )}
+    </div>
+  );
+  /** Below the anchors: save the order (or the list as it is) to My days. */
+  const saveBar = !setup && !savedDay && anchors.length > 1 && (
+    days.length >= MAX_DAYS ? (
+      <p className="hint savefull">{MAX_DAYS} of {MAX_DAYS} days saved. To save this one, delete a day in <button className="link" onClick={() => setTab("days")}>My days</button>.</p>
+    ) : naming === null ? (
+      <button className="btn dark savebtn" onClick={() => setNaming(newDayName(days))}>Save to my days</button>
+    ) : (
+      <form className="namebar" onSubmit={(e) => { e.preventDefault(); saveOrder(naming); }}>
+        <input className="text" autoFocus value={naming} maxLength={30} aria-label="Name this day" placeholder="e.g. Gym day" onChange={(e) => setNaming(e.target.value)} />
+        <button className="btn dark" type="submit">Save</button>
+        <button className="link" type="button" onClick={() => setNaming(null)}>Cancel</button>
+      </form>
+    )
+  );
+  const dayPath = (d: Day) => {
+    const { stops: s } = dayStops(anchors, d);
+    return s.length ? [...s.map((a) => a.name), ...(d.home ? ["Home"] : [])].join(" → ") : "No anchors in this day";
+  };
+  /** My days: separate trips, an unsaved order, and each saved day (show, rename, delete). */
+  const daysTab = (
+    <div className="dayslist">
+      <p className="sec">How your trips are planned</p>
+      <button className={`dayrow${!day ? " on" : ""}`} aria-pressed={!day} onClick={() => chooseDay(null)}>
+        <span className="radio" aria-hidden="true" />
+        <span className="t"><b>Separate trips</b><span>Every anchor is its own trip from home</span></span>
+      </button>
+      {orderDraft && (
+        <div className="dayrow on">
+          <span className="radio" aria-hidden="true" />
+          <span className="t"><b>New order</b><span>Not saved yet · {dayPath(orderDraft)}</span></span>
+          <button className="link" onClick={() => { setTab("anchors"); setNaming(newDayName(days)); }}>Save</button>
+        </div>
+      )}
+      {days.map((d) => (
+        <div key={d.id} className={`dayrow${savedDay?.id === d.id ? " on" : ""}`}>
+          {renaming?.id === d.id ? (
+            <form className="namebar" onSubmit={(e) => { e.preventDefault(); renameDay(d.id, renaming.name.trim() || d.name); setRenaming(null); }}>
+              <input className="text" autoFocus value={renaming.name} maxLength={30} aria-label={`Rename ${d.name}`} onChange={(e) => setRenaming({ id: d.id, name: e.target.value })} />
+              <button className="btn dark" type="submit">Save</button>
+              <button className="link" type="button" onClick={() => setRenaming(null)}>Cancel</button>
+            </form>
+          ) : (
+            <>
+              <button className="dayrow-main" aria-pressed={savedDay?.id === d.id} onClick={() => chooseDay(d.id)}>
+                <span className="radio" aria-hidden="true" />
+                <span className="t"><b>{d.name}</b><span>{dayPath(d)}</span></span>
+              </button>
+              <button className="x" onClick={() => setRenaming({ id: d.id, name: d.name })} aria-label={`Rename ${d.name}`} title="Rename"><Icon name="pencil" size={13} /></button>
+              <button className="x" onClick={() => deleteDay(d.id)} aria-label={`Delete ${d.name}`} title="Delete"><Icon name="close" size={13} /></button>
+            </>
+          )}
+        </div>
+      ))}
+      {!days.length && !orderDraft && (
+        <p className="hint daysempty">
+          No saved days yet. {anchors.length < 2 ? <>Add two or more anchors in <button className="link" onClick={() => setTab("anchors")}>Anchors</button>, then drag them into the order you visit them and tap Save to my days.</> : <>In <button className="link" onClick={() => setTab("anchors")}>Anchors</button>, drag them into the order you visit them, then tap Save to my days.</>}
+        </p>
       )}
     </div>
   );
@@ -872,7 +1014,6 @@ export default function SettleApp() {
   const places = (
     <>
       <div className="sec">{day ? "Life anchors · your day, in order" : "Life anchors · usual way to get there"}</div>
-      {!setup && dayBar}
       <div className="nav">
         <div data-reorder>
           {placeOrder.map((id) => anchors.find((a) => a.id === id)).filter((a): a is Anchor => !!a).map((a, i) => anchorRow(a, day ? i + 1 : null))}
@@ -926,12 +1067,47 @@ export default function SettleApp() {
             <button className="btn iconbtn" onClick={overview} aria-label="Back to the overview" title="Overview: every home and anchor">
               <Icon name="house2" size={16} />
             </button>
+            <button className="btn iconbtn" onClick={() => setConfirmFresh((v) => !v)} aria-expanded={confirmFresh} disabled={!!preview || (!anchors.length && !options.length && !days.length)} aria-label="Start fresh: clear every property, anchor and day" title={preview ? "This plan isn’t yours yet: use the banner below" : "Start fresh"}>
+              <Icon name="restart" size={16} />
+            </button>
             <button className={`btn${running ? "" : " dark"}`} onClick={running ? skip : startCompare} disabled={!options.length || !anchors.length}>
               {running ? "Skip" : hasRun ? "Replay" : "Compare"}
             </button>
             <button className="btn" onClick={share} disabled={!options.length && !anchors.length}>{copied ? "Copied" : "Share"}</button>
           </div>
         </div>
+        {confirmFresh && (
+          <div className="confirm" role="alertdialog" aria-labelledby="confirm-fresh-t">
+            <p id="confirm-fresh-t"><b>Start fresh?</b> This clears every property, anchor and day on this device, photos included.</p>
+            <div className="confirm-acts">
+              <button className="btn danger-btn" autoFocus onClick={startFresh}>Clear everything</button>
+              <button className="btn" onClick={() => setConfirmFresh(false)}>Cancel</button>
+            </div>
+          </div>
+        )}
+        {!setup && (
+          <div className="tabs" role="group" aria-label="Show in the panel">
+            {([["properties", "Properties", options.length], ["anchors", "Anchors", anchors.length], ["days", "My days", days.length]] as const).map(([id, label, n]) => (
+              <button
+                key={id}
+                aria-pressed={tab === id}
+                aria-label={n > 0 ? `${label}, ${n}` : label}
+                className={tab === id ? "on" : undefined}
+                onClick={() => {
+                  setTab(id);
+                  setEdit(null);
+                  setAdding(false);
+                  setNaming(null);
+                  setRenaming(null);
+                  if (narrow) setSnap((s) => (s === "peek" ? "half" : s));
+                  sideScroll.current?.scrollTo({ top: 0 });
+                }}
+              >
+                {label}{n > 0 && <span className="tn">{n}</span>}
+              </button>
+            ))}
+          </div>
+        )}
         <div className="side-scroll" ref={(el) => { sideScroll.current = el; sheet.contentRef(el); }}>
           {preview === "example" && (
             <div className="banner">
@@ -1020,8 +1196,23 @@ export default function SettleApp() {
               </div>
             </>
           ) : (
+            tab === "anchors" ? (
+              <>
+                {error && <p className="err" style={{ margin: "0 2px 10px" }}>{error}</p>}
+                {orderBar}
+                {places}
+                {saveBar}
+              </>
+            ) : tab === "days" ? (
+              daysTab
+            ) : (
             <>
             <div className="sec">Your properties · one-way, weekday 8am</div>
+            {day && (
+              <p className="hint dayline">
+                On the map: {savedDay ? <b>{savedDay.name}</b> : <b>a new order (not saved)</b>} · <button className="link" onClick={() => setTab("days")}>My days</button>
+              </p>
+            )}
             {running && (
               <div className="status">
                 <span>{seq ? `Comparing · ${seq.i + 1} of ${seq.order.length} · best last` : "Getting routes…"}</span>
@@ -1042,9 +1233,8 @@ export default function SettleApp() {
               )
             )}
             {!hasMaps && <p className="hint">Adding homes and places needs the Google Maps key (see README).</p>}
-              <div className="hr" />
-              {places}
             </>
+            )
           )}
           <p className="side-foot"><Link href="/privacy">Privacy</Link> · Travel times by Google Maps</p>
         </div>
@@ -1067,7 +1257,7 @@ export default function SettleApp() {
               onStopHover={setHoverStop}
               fitKey={fitKey}
               dropMode={adding}
-              onSelect={(id) => selectHome(id)}
+              onSelect={(id) => { selectHome(id); setTab("properties"); }}
               onAnchorClick={onAnchorClick}
               onMapClick={onMapClick}
               mobile={mobile}
@@ -1095,6 +1285,12 @@ export default function SettleApp() {
           </div>
         )}
       </main>
+      {undo && (
+        <div className="toast" role="status" onMouseEnter={() => setUndoHeld(true)} onMouseLeave={() => setUndoHeld(false)} onFocus={() => setUndoHeld(true)} onBlur={() => setUndoHeld(false)}>
+          <span>{undo.label}</span>
+          <button onClick={undoLast}>Undo</button>
+        </div>
+      )}
     </div>
   );
 
