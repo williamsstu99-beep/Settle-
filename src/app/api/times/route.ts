@@ -3,7 +3,7 @@ import { nextPeakDeparture } from "@/core/time";
 import type { Mode, Time } from "@/core/types";
 import { RateLimiter } from "@/server/cache";
 import { computeTimes } from "@/server/google-routes";
-import { clientIp, explainError, keyProblem, serverKey } from "@/server/keys";
+import { clientIp, errorResponse, keyProblem, serverKey } from "@/server/keys";
 
 const MODES: Mode[] = ["transit", "drive", "bike", "walk"];
 const point = z.object({ lat: z.number().min(-90).max(90), lng: z.number().min(-180).max(180) });
@@ -15,7 +15,7 @@ const Body = z.object({
   modes: z.array(z.enum(["transit", "drive", "bike", "walk"])).min(1).max(4).optional(),
 });
 
-const limiter = new RateLimiter(30, 60_000);
+const limiter = new RateLimiter(20, 60_000);
 
 /**
  * POST: travel times for every home × place × requested mode, durations
@@ -54,7 +54,6 @@ export async function POST(request: Request) {
     );
     return Response.json({ departure: departure.toISOString(), times });
   } catch (e) {
-    console.error("times error", e);
-    return Response.json(explainError(e), { status: 502 });
+    return errorResponse(e, "times");
   }
 }

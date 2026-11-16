@@ -262,3 +262,19 @@ describe("property details", () => {
     expect(wholeNumber("0", 50)).toBeUndefined();
   });
 });
+
+import { planSource } from "./plan";
+describe("where the plan comes from", () => {
+  it("treats a valid share link as a preview, never the saved plan", () => {
+    expect(planSource(`#s=${encodePlan(EXAMPLE_PLAN)}`, "")).toBe("shared");
+  });
+  it("ignores a broken share link", () => {
+    expect(planSource("#s=not-a-plan", "")).toBe("saved");
+  });
+  it("opens the example as a preview", () => {
+    expect(planSource("", "?example=1")).toBe("example");
+  });
+  it("otherwise uses the plan saved on this device", () => {
+    expect(planSource("", "")).toBe("saved");
+  });
+});

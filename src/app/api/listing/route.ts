@@ -2,7 +2,7 @@ import { parseTradeMeListingId } from "@/core/sources/trademe";
 import { RateLimiter } from "@/server/cache";
 import { fetchTradeMeListing } from "@/server/trademe";
 
-const limiter = new RateLimiter(40, 60_000);
+const limiter = new RateLimiter(20, 60_000);
 
 /** GET /api/listing?url=<listing link>  →  { option } */
 export async function GET(request: Request) {

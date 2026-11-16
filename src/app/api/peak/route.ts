@@ -2,7 +2,7 @@ import { z } from "zod";
 import { nextPeakDeparture } from "@/core/time";
 import { RateLimiter } from "@/server/cache";
 import { mapLimit, peakRange } from "@/server/google-routes";
-import { clientIp, explainError, keyProblem, serverKey } from "@/server/keys";
+import { clientIp, errorResponse, keyProblem, serverKey } from "@/server/keys";
 
 const point = z.object({ lat: z.number().min(-90).max(90), lng: z.number().min(-180).max(180) });
 const Body = z.object({
@@ -10,7 +10,7 @@ const Body = z.object({
   pairs: z.array(z.object({ optionId: z.string().max(80), anchorId: z.string().max(80), origin: point, destination: point })).min(1).max(8),
 });
 
-const limiter = new RateLimiter(30, 60_000);
+const limiter = new RateLimiter(15, 60_000);
 
 /**
  * POST: best/worst drive time at peak ("5–9 min at peak") for the selected
@@ -34,7 +34,6 @@ export async function POST(request: Request) {
     const peaks = await mapLimit(body.pairs, 4, async (p) => ({ optionId: p.optionId, anchorId: p.anchorId, peak: (await peakRange(p.origin, p.destination, departure, apiKey)) ?? null }));
     return Response.json({ peaks });
   } catch (e) {
-    console.error("peak error", e);
-    return Response.json(explainError(e), { status: 502 });
+    return errorResponse(e, "peak");
   }
 }

@@ -185,3 +185,45 @@ describe("along the way", () => {
     expect(r.map((x) => [x.name, x.fromHome, x.detour])).toEqual([["Handy Gym", 8, 0], ["Far Gym", 10, 5], ["Unnamed place", undefined, undefined]]);
   });
 });
+
+import { RoutesApiError } from "./google-routes";
+import { errorResponse, userError } from "./keys";
+describe("errors the public sees", () => {
+  it("says 'try tomorrow' when a daily quota is used up", () => {
+    const e = new RoutesApiError("Quota exceeded for quota metric 'Requests' and limit 'Requests per day' of service 'routes.googleapis.com' for consumer 'project_number:123'.", 429);
+    expect(userError(e)).toEqual({ error: expect.stringContaining("today’s limit"), status: 429 });
+  });
+  it("says 'try in a minute' for a per-minute limit", () => {
+    expect(userError(new RoutesApiError("RESOURCE_EXHAUSTED: per minute", 429)).error).toContain("in a minute");
+  });
+  it("never passes Google's text or the project number to the public site", async () => {
+    const before = process.env.VERCEL_ENV;
+    process.env.VERCEL_ENV = "production";
+    const err = console.error;
+    console.error = () => {};
+    try {
+      const r = errorResponse(new RoutesApiError("API key not valid for consumer project_number:123", 400), "test");
+      const body = await r.json();
+      expect(body).toEqual({ error: expect.any(String) });
+      expect(JSON.stringify(body)).not.toMatch(/project_number|API key/);
+      expect(r.status).toBe(502);
+    } finally {
+      console.error = err;
+      if (before === undefined) delete process.env.VERCEL_ENV; else process.env.VERCEL_ENV = before;
+    }
+  });
+  it("keeps the setup hint and Google's text on previews", async () => {
+    const before = process.env.VERCEL_ENV;
+    process.env.VERCEL_ENV = "preview";
+    const err = console.error;
+    console.error = () => {};
+    try {
+      const body = await errorResponse(new RoutesApiError("API key not valid. API_KEY_INVALID", 400), "test").json();
+      expect(body.error).toContain("server key is invalid");
+      expect(body.detail).toContain("API_KEY_INVALID");
+    } finally {
+      console.error = err;
+      if (before === undefined) delete process.env.VERCEL_ENV; else process.env.VERCEL_ENV = before;
+    }
+  });
+});

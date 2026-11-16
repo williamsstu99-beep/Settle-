@@ -495,3 +495,28 @@ button:disabled { cursor: not-allowed; }
 .peaklink { font-size: 12px; margin-left: 10px; text-decoration: underline; text-underline-offset: 2px; text-decoration-color: var(--line2); }
 .peaklink:hover { color: var(--fg); }
 .peak { font-size: 12px; color: var(--muted); margin-left: 10px; }
+
+/* shared-plan banner: keep it, or go back to yours */
+.banner.shared { flex-direction: column; gap: 8px; background: #F4F7FC; border: 1px solid #DDE8F8; }
+.banner-acts { display: flex; align-items: center; gap: 8px; }
+.btn.sm { padding: 6px 12px; font-size: 13px; border-radius: 8px; }
+
+/* ---------- phones: no zoom-on-focus, and fingers-sized targets (40–44px) ---------- */
+/* iOS Safari zooms the page into any field under 16px and stays zoomed. */
+.app.sheet input, .app.sheet textarea, .app.sheet select, .app.sheet .text, .app.sheet .text.sm { font-size: 16px; }
+.app.sheet .text { padding-top: 10px; padding-bottom: 10px; }
+.app.sheet .x { width: 40px; height: 40px; border-radius: 10px; }
+.app.sheet .grip, .app.sheet .grip-space { width: 30px; }
+.app.sheet .grip { height: 40px; }
+.app.sheet .daylink { min-height: 40px; padding: 10px 8px; font-size: 13px; }
+.app.sheet .modepick { min-height: 40px; padding: 8px 12px; font-size: 13.5px; }
+.app.sheet .modes { gap: 6px; }
+.app.sheet .mode { min-height: 42px; align-items: center; }
+.app.sheet .peaklink, .app.sheet .leg-h .link { min-height: 40px; padding: 10px 6px; font-size: 13px; }
+.app.sheet .along-cats button { min-height: 38px; padding: 8px 13px; font-size: 13px; }
+.app.sheet .sec button { min-height: 36px; padding: 8px 4px; }
+.app.sheet .viewbtn { display: none; }
+.side-foot { margin: 28px 2px 4px; font-size: 12px; color: var(--faint); }
+.side-foot a { color: var(--muted); text-decoration: underline; text-underline-offset: 2px; }
+.app.sheet .banner .btn.sm { min-height: 40px; padding: 9px 14px; font-size: 14px; }
+.app.sheet .banner a { padding: 10px 2px; }

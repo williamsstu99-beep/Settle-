@@ -23,6 +23,9 @@ The logo is `src/components/Logo.tsx` (the route "S"); the favicon is `src/app/i
 - **Along the way:** for the selected home, search any category (gym, café, school, childcare…) along its route to one of your places. Results come from the Places API (New) text search with `searchAlongRouteParameters`, with the extra minutes each stop adds; any result can be added as a place.
 - **Step through routes:** selecting a home draws its routes one place at a time and lights up each place's card as its route arrives (switch on the map to turn it off). Places default to driving.
 - **Landing page:** the hero plays a short screen recording of the app (`public/landing/demo.mp4`, muted and looping, with `demo-poster.jpg` while it loads). Without it, the hero falls back to `public/landing/hero.png`, then to the drawn illustration.
+- **Shared links:** opening someone's link shows their plan as a preview, with "Keep it" or "Back to yours". It never replaces the plan on your device unless you keep it; with no plan of your own, it's kept straight away.
+- **Errors:** the public site shows plain words (e.g. "Settle has reached today's limit for travel times. Please try again tomorrow."). Google's own text and setup hints go to the server log, and also show on previews and local dev, so setup problems are easy to spot.
+- **Privacy and previews:** `/privacy` explains what stays on the device and what goes to Google and Vercel (set `NEXT_PUBLIC_CONTACT_EMAIL` to show a contact). Shared links get a preview card (`src/app/opengraph-image.jpg`).
 - **Share:** the whole plan is encoded in the link (`#s=…`). Nothing is stored on the server.
 
 The engine is deliberately general (anchors and options, not flats and workplaces), so other uses (buying, jobs, schools, relocation) are new screens rather than a rebuild.
@@ -61,7 +64,7 @@ Without keys the landing page and app still open, but the map, address search an
 2. Enable **Maps JavaScript API**, **Places API (New)** and **Routes API** (the Routes API covers both route lines and the route matrix). The server key also needs **Places API (New)** allowed for Along the way suggestions. Optionally enable the **Elevation API** and allow it on the server key for "Flat / Some hills / Hilly" on bike and walk routes.
 3. Create two API keys:
    - **Browser key** → `NEXT_PUBLIC_GOOGLE_MAPS_API_KEY`. Restrict it to *Websites* (your domains, plus `localhost:3000` for development) and to the Maps JavaScript and Places APIs.
-   - **Server key** → `GOOGLE_MAPS_SERVER_KEY`. Restrict it to the Routes API only.
+   - **Server key** → `GOOGLE_MAPS_SERVER_KEY`. Restrict it by API to the Routes API and Places API (New) (Along the way needs Places), plus Elevation if you use it. No website restriction.
 4. Set budget alerts and quota caps in the console so a traffic spike can't surprise you.
 
 ### TradeMe (optional)

@@ -6,7 +6,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { compare, formatPrice, legKey, pairKey, tripMode, type LegView, type OptionSummary } from "@/core/compare";
 import { dayStops, MAX_DAYS, newDayName, pruneDays, reorderDay, toggleSkip, tripsFor, type Day, type Trip } from "@/core/day";
-import { activeDay, anchorColor, decodePlan, encodePlan, EXAMPLE_PLAN, letterOf, migratePlan, MAX_ANCHORS, MAX_OPTIONS, newId, nextAnchorColor, type Plan } from "@/core/plan";
+import { activeDay, planSource, anchorColor, decodePlan, encodePlan, EXAMPLE_PLAN, letterOf, migratePlan, MAX_ANCHORS, MAX_OPTIONS, newId, nextAnchorColor, type Plan } from "@/core/plan";
 import type { Anchor, LatLng, Leg, Mode, Option, Time } from "@/core/types";
 import type { AlongResult } from "@/server/places";
 import { Icon, MODE_LABEL } from "./icons";
@@ -43,6 +43,21 @@ function loadPlan(): Plan {
   }
   // The example is only shown when asked for (the landing page's "See an example").
   if (new URLSearchParams(location.search).has("example")) return EXAMPLE_PLAN;
+  return loadSaved();
+}
+
+/** True when this device already has a plan of its own (not the example, not empty). */
+function savedPlanExists(): boolean {
+  try {
+    const p = JSON.parse(localStorage.getItem(PLAN_KEY) ?? "null") as Plan | null;
+    return !!p && !p.example && (p.anchors?.length > 0 || p.options?.length > 0);
+  } catch {
+    return false;
+  }
+}
+
+/** The plan saved on this device, or an empty one. */
+function loadSaved(): Plan {
   try {
     const raw = localStorage.getItem(PLAN_KEY);
     if (raw) {
@@ -74,7 +89,8 @@ function saveMap<T>(key: string, m: Map<string, T>, max: number) {
 async function postJson<T>(url: string, body: unknown): Promise<T> {
   const r = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
   const j = await r.json().catch(() => ({}));
-  if (!r.ok) throw new Error([j.error ?? "Couldn't get travel times right now.", j.detail ? `Google said: ${j.detail}` : ""].filter(Boolean).join(" "));
+  // The public site only sends plain words; previews and local dev add Google's own text as `detail`.
+  if (!r.ok) throw new Error([j.error ?? "Couldn’t get travel times right now.", j.detail ? `(Details: ${j.detail})` : ""].filter(Boolean).join(" "));
   return j as T;
 }
 
@@ -100,7 +116,8 @@ export default function SettleApp() {
     mq.addEventListener("change", on);
     return () => mq.removeEventListener("change", on);
   }, []);
-  const mobile = resolveView(viewPref, narrow) === "mobile";
+  // Phones always get mobile mode (the sheet layout has no view switch); wider screens follow the toggle.
+  const mobile = narrow || resolveView(viewPref, narrow) === "mobile";
   // Phones: the panel is a bottom sheet over a full-screen map (core/sheet.ts).
   const sheet = useSheet(narrow, "half");
   const toggleView = () => {
@@ -148,11 +165,19 @@ export default function SettleApp() {
   const swatch = (a: Anchor) => anchorColor(a, anchors.indexOf(a));
   const swatchStyle = (a: Anchor) => ({ "--a": swatch(a).marker, "--ar": swatch(a).route, "--at": swatch(a).tab } as React.CSSProperties);
 
-  // Persist locally (never the untouched example, so it can't replace your own plan); drop a share hash once loaded.
+  // A shared link or the example is a preview: it's never saved over a plan on this device until you keep it.
+  // With no plan of your own there's nothing to protect, so a shared plan is simply kept (and edits are never lost).
+  const [hasSaved] = useState(savedPlanExists);
+  const [preview, setPreview] = useState<"shared" | "example" | null>(() => {
+    const src = planSource(location.hash, location.search);
+    return src === "saved" || (src === "shared" && !hasSaved) ? null : src;
+  });
+  const [sharedKept, setSharedKept] = useState(() => planSource(location.hash, location.search) === "shared" && !hasSaved);
+  useEffect(() => { if (sharedKept) clearShareHash(); }, [sharedKept]);
   useEffect(() => {
-    if (!plan.example) try { localStorage.setItem(PLAN_KEY, JSON.stringify(plan)); } catch {}
-    if (location.hash.startsWith("#s=")) history.replaceState(null, "", location.pathname + location.search);
-  }, [plan]);
+    if (!preview && !plan.example) try { localStorage.setItem(PLAN_KEY, JSON.stringify(plan)); } catch {}
+  }, [plan, preview]);
+  function clearShareHash() { if (location.hash.startsWith("#s=")) history.replaceState(null, "", location.pathname + location.search); }
   useEffect(() => saveMap(LEGS_KEY, legs, 300), [legs]);
   useEffect(() => saveMap(TIMES_KEY, times, 1200), [times]);
 
@@ -201,6 +226,7 @@ export default function SettleApp() {
       modes: timesWanted.modes,
     })
       .then((j) => {
+        setError(null);
         setTimes((prev) => {
           const next = new Map(prev);
           for (const t of j.times) next.set(legKey(t.optionId, t.anchorId, t.mode), t);
@@ -267,6 +293,7 @@ export default function SettleApp() {
       pairs: batch.map(({ t, mode }) => ({ optionId: t.from, anchorId: t.to, mode, origin: t.origin, destination: t.destination })),
     })
       .then((j) => {
+        setError(null); // routes are coming back again, so an old error no longer applies
         setLegs((prev) => {
           const next = new Map(prev);
           for (const l of j.legs) next.set(legKey(l.optionId, l.anchorId, l.mode), l);
@@ -399,7 +426,7 @@ export default function SettleApp() {
   const setPhotos = (id: string, photos: string[]) => {
     const next = { ...plan, example: false, options: plan.options.map((o) => (o.id === id ? { ...o, photos: photos.length ? photos : undefined } : o)) };
     try {
-      localStorage.setItem(PLAN_KEY, JSON.stringify(next));
+      if (!preview) localStorage.setItem(PLAN_KEY, JSON.stringify(next)); // a preview isn't saved until it's kept
     } catch {
       return setError("There's no room left on this device for more photos. Remove a few and try again.");
     }
@@ -480,6 +507,15 @@ export default function SettleApp() {
 
   const share = async () => {
     const url = `${location.origin}${location.pathname}#s=${encodePlan(plan)}`;
+    // Phones: the native share sheet (WhatsApp, Messenger…). Desktop: copy the link.
+    if (narrow && typeof navigator.share === "function") {
+      try {
+        await navigator.share({ title: "Settle", text: "Compare these homes by their real trips on Settle", url });
+        return;
+      } catch (e) {
+        if ((e as Error).name === "AbortError") return; // they closed the share sheet
+      }
+    }
     try {
       await navigator.clipboard.writeText(url);
       setCopied(true);
@@ -493,6 +529,13 @@ export default function SettleApp() {
     setPending(null);
     setSelectedState(null);
   };
+  /** Keep a shared plan: from now on it's saved on this device. */
+  const keepShared = () => {
+    setPreview(null);
+    clearShareHash();
+  };
+  /** Leave a shared plan without saving it: reload the app on the plan saved on this device, so nothing from the shared plan lingers. */
+  const backToMine = () => location.assign(location.pathname);
   /** The way out: back to the overview of every home and anchor, with nothing open. */
   const overview = () => {
     deselect();
@@ -890,10 +933,28 @@ export default function SettleApp() {
           </div>
         </div>
         <div className="side-scroll" ref={(el) => { sideScroll.current = el; sheet.contentRef(el); }}>
-          {plan.example && (
+          {preview === "example" && (
             <div className="banner">
-              <span><b>This is an example.</b> Have a look around, then start your own.</span>
+              <span><b>This is an example.</b> Have a look around, then start your own. Changes here aren’t saved.</span>
               <a href="/compare">Start your own</a>
+            </div>
+          )}
+          {sharedKept && (
+            <div className="banner shared" role="status">
+              <span><b>Someone shared this plan with you.</b> It’s saved on this device now, so you can change it and add your own.</span>
+              <span className="banner-acts"><button className="btn sm" onClick={() => setSharedKept(false)}>Got it</button></span>
+            </div>
+          )}
+          {preview === "shared" && (
+            <div className="banner shared" role="status">
+              <span>
+                <b>Someone shared this plan with you.</b> Have a look around. It isn’t saved on this device until you keep it
+                {hasSaved ? ", and keeping it replaces your own plan." : "."}
+              </span>
+              <span className="banner-acts">
+                <button className="btn dark sm" onClick={keepShared}>Keep it</button>
+                {hasSaved ? <button className="btn sm" onClick={backToMine}>Back to yours</button> : <a href="/compare" onClick={clearShareHash}>Start your own</a>}
+              </span>
             </div>
           )}
           {setup === "places" ? (
@@ -985,6 +1046,7 @@ export default function SettleApp() {
               {places}
             </>
           )}
+          <p className="side-foot"><Link href="/privacy">Privacy</Link> · Travel times by Google Maps</p>
         </div>
       </aside>
       <main className="mapwrap">

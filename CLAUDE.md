@@ -27,7 +27,7 @@ Settle helps people pick a home by how it fits their life. Users add **life anch
   - Other-mode times load only for a trip whose modes you open; the "5–9 min at peak" range (`/api/peak`) only when you tap "Peak range" on a drive. Never while Compare is stepping.
   - 3-day server cache plus browser cache, so reselecting is free. Per-IP rate limits on every API route.
   - Don't add calls per render, per pan or per unselected home.
-- **No server state, no accounts:** plans persist in `localStorage` (`settle.plan.v1` etc.). Share links encode the plan in `#s=` (no photos). User photos are downscaled data URLs, max 4 per property, device-only.
+- **No server state, no accounts:** plans persist in `localStorage` (`settle.plan.v1` etc.). Share links encode the plan in `#s=` (no photos). A shared link or the example opens as a **preview** that is never saved over the device's plan unless the user taps "Keep it" (a device with no plan just keeps a shared one). User photos are downscaled data URLs, max 4 per property, device-only.
 - **Starts empty:** a two-step setup you move through yourself: "Add the places that matter to you" (any number via "Add anchor", then Next), then "Add your properties" (any number, then Show on the map). It never jumps ahead after the first one. The example plan only loads at `/compare?example=1` and is never saved.
 - **Drive is the default mode** for new anchors (Auckland drives). Per-leg overrides are keyed `${optionId}|${anchorId}`.
 - **Map:**
@@ -51,7 +51,7 @@ Settle helps people pick a home by how it fits their life. Users add **life anch
 ## Conventions
 - Run `npm test`, `npm run lint` and `npm run build` before committing; all must pass. Put new logic in `src/core` with tests.
 - Never call real Google from tests. UI checks use a Playwright rig with stubbed Google Maps and mocked `/api/*`, kept out of the repo.
-- Copy is plain English and NZ spelling, with user-facing words: "life anchors", "properties", "homes". Google errors go through `explainError`.
+- Copy is plain English and NZ spelling, with user-facing words: "life anchors", "properties", "homes". Google errors go through `errorResponse` (keys.ts): plain words for the public, Google's text and setup hints only in logs, on previews and in local dev.
 - **Update `BACKLOG.md` in every PR:** move items to Done, add anything new that's parked or decided.
 - One branch and PR per change set (`claude/<topic>`). Don't force-push; start a new branch. Use the attribution trailers in commits.
 - Never put API keys in code, commits or chat. Keep the README's cost section and code map in sync with changes.

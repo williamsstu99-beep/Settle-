@@ -32,7 +32,7 @@ export function explainError(e: unknown): { error: string; detail?: string } {
   }
   const m = e.message;
   if (/referer|referrer/i.test(m)) {
-    return { error: "Google blocked the server's request because the server key is restricted to websites. Use a separate server key restricted to the Routes API only (no website restriction).", detail: m };
+    return { error: "Google blocked the server's request because the server key is restricted to websites. Use a separate server key restricted by API (Routes API and Places API (New)), with no website restriction.", detail: m };
   }
   if (/not been used|disabled|not enabled|SERVICE_DISABLED/i.test(m)) {
     return { error: "The Routes API isn't enabled for this key's Google Cloud project. Enable it under APIs & Services → Library.", detail: m };
@@ -44,6 +44,36 @@ export function explainError(e: unknown): { error: string; detail?: string } {
   if (/billing/i.test(m)) return { error: "Google needs billing turned on for this project before it will return routes.", detail: m };
   if (e.status === 429) return { error: "Google's rate limit was hit. Try again in a minute.", detail: m };
   return { error: "Google couldn't return travel times.", detail: m };
+}
+
+/** What the public sees when a Google call fails: plain words, never Google's own text. */
+export function userError(e: unknown, what = "travel times"): { error: string; status: number } {
+  const msg = e instanceof Error ? e.message : "";
+  const status = e instanceof RoutesApiError ? e.status : 0;
+  if (status === 429 || /RESOURCE_EXHAUSTED|quota/i.test(msg)) {
+    return /per ?day|daily|perDay|1d\b/i.test(msg)
+      ? { error: `Settle has reached today’s limit for ${what}. Please try again tomorrow.`, status: 429 }
+      : { error: "Settle is busy right now. Please try again in a minute.", status: 429 };
+  }
+  if ((e as { name?: string })?.name === "TimeoutError") return { error: "Google took too long to answer. Please try again.", status: 504 };
+  return { error: `Couldn’t get ${what} right now. Please try again in a moment.`, status: 502 };
+}
+
+/** Previews and local dev show the setup hint and Google's text; the public site doesn't. */
+const showDetails = () => process.env.VERCEL_ENV !== "production";
+
+/**
+ * The response for a failed Google call. Google's text and the setup hint always go to
+ * the server log; the public only ever gets plain words (see userError).
+ * @param setupHint a clearer hint for the person setting Settle up, if the caller knows one
+ * @param what what the person was getting, in plain words (default "travel times")
+ */
+export function errorResponse(e: unknown, where: string, setupHint?: string, what?: string): Response {
+  const setup = explainError(e);
+  console.error(`[${where}]`, setupHint ?? setup.error, setup.detail ?? "");
+  const pub = userError(e, what);
+  const body = showDetails() && pub.status !== 429 ? { error: setupHint ?? setup.error, detail: setup.detail } : { error: pub.error };
+  return Response.json(body, { status: pub.status });
 }
 
 /** Strip whitespace and wrapping quotes from a pasted key. */
