@@ -2,21 +2,20 @@ import { existsSync } from "node:fs";
 import path from "node:path";
 import Image from "next/image";
 import Link from "next/link";
-import { HeroDemo } from "@/components/landing/HeroDemo";
+import { HeroVideo } from "@/components/landing/HeroVideo";
 import { SettleMark, Wordmark } from "@/components/Logo";
 import "./landing.css";
 
 /**
- * The hero shows, in order of preference: a screen recording of the app
- * (public/landing/demo.mp4, with demo-poster.jpg while it loads), a screenshot
- * (public/landing/hero.png), or the drawn illustration.
+ * The hero is a real recording of the app (public/landing/hero.mp4, with
+ * hero-poster.jpg while it loads). A screenshot at public/landing/hero.png is
+ * the fallback if the recording is missing.
  */
+const HERO_VIDEO = "/landing/hero.mp4";
+const HERO_POSTER = "/landing/hero-poster.jpg";
 const HERO = "/landing/hero.png";
-const DEMO = "/landing/demo.mp4";
-const DEMO_POSTER = "/landing/demo-poster.jpg";
 const has = (p: string) => existsSync(path.join(process.cwd(), "public", p));
-const hasDemo = has(DEMO);
-const hasHeroShot = has(HERO);
+const hasHeroVideo = has(HERO_VIDEO);
 
 const STEPS = [
   { n: "1", tint: "sky", title: "Set your life anchors", body: "Work, the gym, your partner’s place, the kids’ school. Name them and choose how you usually get there." },
@@ -58,10 +57,12 @@ export default function Landing() {
             <p className="l-small">Paste a TradeMe link or type any address.</p>
           </div>
           <div className="l-hero-art">
-            {hasHeroShot ? (
-              <div className="l-shot"><Image src={HERO} alt="Settle comparing three homes on a map, with routes to work, the gym and a friend’s place" fill sizes="(max-width: 900px) 100vw, 640px" priority /></div>
+            {hasHeroVideo ? (
+              <div className="l-shot l-video">
+                <HeroVideo src={HERO_VIDEO} poster={HERO_POSTER} label="A recording of Settle: two homes compared by their real trips to work, the gym and school on Google Maps, then the anchors put in order and saved as a day." />
+              </div>
             ) : (
-              <HeroDemo />
+              <div className="l-shot"><Image src={HERO} alt="Settle comparing homes on a map, with routes to work, the gym and school" fill sizes="(max-width: 900px) 100vw, 640px" priority /></div>
             )}
           </div>
         </section>
@@ -80,18 +81,6 @@ export default function Landing() {
             </ol>
           </div>
         </section>
-
-        {hasDemo && (
-          <section className="l-wrap l-real">
-            <div className="l-real-copy">
-              <h2 className="l-h2">See it for real</h2>
-              <p className="l-lede">A 26-second recording of Settle with real Google routes: two homes, three anchors, Compare, peak traffic and the bus.</p>
-            </div>
-            <div className="l-shot l-video">
-              <video src={DEMO} poster={has(DEMO_POSTER) ? DEMO_POSTER : undefined} controls muted playsInline preload="none" aria-label="A 26-second recording of Settle comparing two homes by their real trips to work, the gym and school" />
-            </div>
-          </section>
-        )}
 
         <section id="features" className="l-wrap l-features">
           <div className="l-anchors">
