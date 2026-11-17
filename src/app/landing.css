@@ -33,34 +33,14 @@
 .l-ctas { display: flex; flex-wrap: wrap; gap: 12px; }
 .l-small { font-size: 14px; color: var(--quiet); }
 .l-hero-art { flex: 1 1 520px; min-width: 0; }
-.l-shot, .l-map { position: relative; width: 100%; aspect-ratio: 600 / 520; border-radius: 24px; overflow: hidden; background: #ECEEE9;
+.l-shot { position: relative; width: 100%; aspect-ratio: 600 / 520; border-radius: 24px; overflow: hidden; background: #ECEEE9;
   box-shadow: 0 1px 2px rgba(20, 24, 30, .06), 0 24px 60px rgba(20, 24, 30, .12); }
 .l-shot img { object-fit: cover; }
 /* the demo recording is 16:10 (a 1280 × 800 screen) */
 .l-shot.l-video { aspect-ratio: 16 / 10; background: #F5F6F8; }
 .l-video video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; display: block; }
-.l-map svg { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
 
-/* hero map: routes draw one anchor at a time, each card lights up as its route arrives */
-.l-route path { stroke-dasharray: 1; stroke-dashoffset: 1; animation: l-draw .9s cubic-bezier(.45, 0, .2, 1) forwards; animation-delay: calc(.6s + var(--i) * .75s); }
-@keyframes l-draw { to { stroke-dashoffset: 0; } }
-.l-home, .l-tab, .l-place { position: absolute; }
-.l-home { background: #434C55; color: #fff; border-radius: 12px; padding: 10px 14px; display: flex; flex-direction: column; gap: 2px; box-shadow: 0 6px 18px rgba(20, 24, 30, .22); }
-.l-home b { font-size: 15px; } .l-home span { font-size: 13px; color: #D9DDE2; }
-.l-tab { background: #fff; border-radius: 8px; padding: 5px 10px; font-size: 13px; font-weight: 700; box-shadow: 0 2px 8px rgba(20, 24, 30, .14); }
-.l-place { width: min(150px, 28%); min-width: 116px; background: #fff; border-radius: 12px; overflow: hidden; box-shadow: 0 6px 18px rgba(20, 24, 30, .14);
-  opacity: .35; animation: l-arrive .35s ease forwards; animation-delay: calc(1.3s + var(--i) * .75s); }
-@keyframes l-arrive { to { opacity: 1; } }
-.l-place-h { display: block; background: var(--c); color: #fff; font-weight: 800; font-size: 15px; padding: 6px 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.l-place-b { display: flex; flex-direction: column; gap: 2px; padding: 8px 12px; }
-.l-place-b b { font-size: 22px; font-weight: 800; letter-spacing: -0.02em; }
-.l-place-b em { font-style: normal; font-size: 12px; font-weight: 600; color: var(--quiet); }
-.l-place-b em.good { color: #2E6247; }
-@media (prefers-reduced-motion: reduce) {
-  .l-route path { animation: none; stroke-dashoffset: 0; }
-  .l-place { animation: none; opacity: 1; }
-  .l-btn { transition: none; }
-}
+@media (prefers-reduced-motion: reduce) { .l-btn { transition: none; } }
 
 /* sections */
 .l-band { background: #fff; padding: 96px 0; }
@@ -93,8 +73,6 @@
   .l-nav .l-btn { width: auto; }
   .l-band, .l-features { padding-top: 72px; padding-bottom: 72px; }
   .l-home span, .l-tab { display: none; }
-  .l-place-b em { display: none; }
-  .l-place-b b { font-size: 18px; }
 }
 
 /* privacy and other plain pages */
@@ -104,3 +82,95 @@
 .l-legal p, .l-legal li { font-size: 16.5px; line-height: 1.65; color: var(--body); }
 .l-legal ul { padding-left: 20px; display: flex; flex-direction: column; gap: 6px; }
 .l-legal a { color: var(--ink); text-decoration: underline; text-underline-offset: 2px; }
+
+/* ---------- hero demo: an animated story of Settle (HeroDemo.tsx) ---------- */
+/* Everything is sized from the box width (cqw), so phone and desktop look the same. */
+.hd { position: relative; width: 100%; aspect-ratio: 600 / 520; border-radius: 24px; overflow: hidden; background: #ECEEE9; container-type: inline-size;
+  box-shadow: 0 1px 2px rgba(20, 24, 30, .06), 0 24px 60px rgba(20, 24, 30, .12); font-size: clamp(8px, 2.15cqw, 13px); color: #2C3038; user-select: none; }
+.hd > svg { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+.hd > :not(svg) { transition: opacity .6s ease; }
+.hd.out > :not(svg), .hd.out .hd-route, .hd.out .hd-greys { opacity: 0; }
+
+/* routes: grey for every home, then each home's routes draw out in place colours */
+.hd-greys path { fill: none; stroke: #B5BBC3; stroke-width: 2.5; stroke-linecap: round; stroke-linejoin: round; opacity: 0; transition: opacity .5s ease; }
+.hd-greys.on path { opacity: .9; }
+.hd-greys.dim path { opacity: .35; }
+.hd-route { transition: opacity .5s ease; }
+.hd-draw { fill: none; stroke-linecap: round; stroke-linejoin: round; stroke-dasharray: 1; stroke-dashoffset: 1; transition: stroke-dashoffset .6s cubic-bezier(.45, 0, .2, 1); }
+.hd-route.on .hd-draw { stroke-dashoffset: 0; }
+.hd-case { stroke: #fff; stroke-width: 10; }
+.hd-core { stroke: var(--rc); stroke-width: 5.5; }
+.hd-route:not(.on) { opacity: 0; transition: opacity .35s ease; }
+/* the trip home draws, then settles to light grey */
+.hd-route.light.on .hd-core { stroke: #D3D7DD; transition: stroke-dashoffset .6s cubic-bezier(.45, 0, .2, 1), stroke 1s ease 2.4s; }
+
+/* life anchors */
+.hd-anchor { position: absolute; width: 0; height: 0; z-index: 2; animation: hd-pop .45s cubic-bezier(.2, .9, .3, 1.3) both; animation-delay: calc(.15s + var(--i) * .25s); }
+@keyframes hd-pop { from { opacity: 0; transform: scale(.6); } to { opacity: 1; transform: scale(1); } }
+.hd-amark { position: absolute; left: 0; top: 0; width: 1.6em; height: 1.6em; transform: translate(-50%, -50%); border-radius: 50%; background: #fff; border: .18em solid var(--c); box-shadow: 0 1px 4px rgba(20, 24, 30, .25); z-index: 2; }
+.hd-acard { position: absolute; display: flex; flex-direction: column; align-items: flex-start; filter: drop-shadow(0 .4em .9em rgba(20, 24, 30, .14)); }
+.side-right > .hd-acard { left: 0; top: 0; transform: translateY(-50%); padding-left: .2em; }
+.side-above > .hd-acard { left: 0; bottom: .3em; transform: translateX(-50%); }
+.hd-atab { display: inline-flex; align-items: center; gap: .4em; background: var(--c); color: #fff; font-weight: 800; font-size: 1.12em; padding: .35em .8em .3em 1.1em; border-radius: .6em; white-space: nowrap; }
+.side-above .hd-atab { padding-left: .8em; }
+.hd-acard.timed .hd-atab { border-radius: .6em .6em 0 0; }
+.hd-atab i { font-style: normal; font-size: .78em; background: rgba(255, 255, 255, .25); border-radius: 999px; min-width: 1.5em; text-align: center; padding: 0 .3em; }
+.hd-abody { display: flex; align-items: center; gap: .6em; background: #fff; border-radius: 0 .7em .7em .7em; border-top: .2em solid var(--c); padding: .35em .8em .4em 1.1em; min-width: 8.2em; opacity: .3; animation: hd-arrive .3s ease forwards; animation-delay: var(--arrive); }
+.side-above .hd-abody { padding-left: .8em; }
+@keyframes hd-arrive { to { opacity: 1; } }
+.hd-abody b { font-size: 1.55em; font-weight: 800; letter-spacing: -.02em; line-height: 1; font-variant-numeric: tabular-nums; }
+.hd-abody small { font-size: .55em; font-weight: 600; color: #8A9099; }
+.hd-mode { color: var(--c); display: inline-flex; font-size: 1.1em; }
+.hd-abody em { font-style: normal; font-size: .8em; font-weight: 700; background: #16181C; color: #fff; border-radius: 999px; padding: .15em .6em; margin-left: auto; }
+
+/* homes */
+.hd-home { position: absolute; width: 0; height: 0; z-index: 3; opacity: 0; transform: translateY(-.8em); transition: opacity .45s ease, transform .55s cubic-bezier(.2, .9, .3, 1.25); transition-delay: calc(var(--i) * .25s); }
+.hd-home.in { opacity: 1; transform: none; }
+.hd-home.sel { z-index: 4; }
+.hd-hub { position: absolute; left: 0; top: 0; transform: translate(-50%, -50%); width: 2.1em; height: 2.1em; border-radius: .65em; background: #6B737C; color: #fff; border: .16em solid #fff; display: grid; place-items: center; font-size: 1em; box-shadow: 0 1px 4px rgba(20, 24, 30, .25); z-index: 2; transition: all .3s ease; }
+.hd-home.sel .hd-hub { width: 3em; height: 3em; border-radius: .9em; background: #2C3038; font-size: 1.25em; box-shadow: 0 .2em .8em rgba(20, 24, 30, .3); }
+.hd-htab { position: absolute; left: .7em; top: 0; transform: translateY(-50%); background: #fff; border-radius: .6em; padding: .35em .8em .35em 1em; font-weight: 700; font-size: .95em; white-space: nowrap; box-shadow: 0 .1em .3em rgba(20, 24, 30, .14), 0 .3em .9em rgba(20, 24, 30, .1); }
+.hd-hcard { position: absolute; right: 1.3em; top: 0; transform: translateY(-50%); width: 13em; background: #434C55; color: #fff; border-radius: 1em; overflow: hidden; box-shadow: 0 .8em 2em rgba(20, 24, 30, .28); animation: hd-grow .35s cubic-bezier(.2, .9, .3, 1.1) both; transform-origin: 100% 50%; }
+@keyframes hd-grow { from { opacity: 0; transform: translateY(-50%) scale(.85); } to { opacity: 1; transform: translateY(-50%) scale(1); } }
+.hd-hcard img { display: block; width: 100%; height: 5.6em; object-fit: cover; }
+.hd-hrow { display: flex; justify-content: space-between; gap: .6em; padding: .55em .8em 0; font-size: 1.02em; }
+.hd-hrow small { font-size: .7em; font-weight: 500; color: #C9D0D6; }
+.hd-hsub { display: block; padding: .15em .8em .65em; font-size: .82em; color: #C9D0D6; }
+
+/* the day panel (bottom left) */
+.hd-panel { position: absolute; left: 3.5%; bottom: 4%; width: 13.5em; background: #fff; border-radius: 1em; padding: .8em .9em .9em; box-shadow: 0 .8em 2em rgba(20, 24, 30, .2); z-index: 5; opacity: 0; transform: translateY(1em); transition: opacity .4s ease, transform .5s cubic-bezier(.2, .9, .3, 1.2); pointer-events: none; }
+.hd-panel.on { opacity: 1; transform: none; }
+.hd-ptitle { display: block; font-size: .78em; font-weight: 700; color: #8A9099; text-transform: uppercase; letter-spacing: .06em; margin-bottom: .45em; }
+.hd-panel ul { list-style: none; margin: 0; padding: 0; position: relative; height: 6.9em; }
+.hd-panel li { position: absolute; left: 0; right: 0; top: 0; height: 2.3em; display: flex; align-items: center; gap: .55em; font-weight: 700; font-size: 1em; transition: transform .6s cubic-bezier(.3, .8, .3, 1) 1s; }
+.hd-panel li .bar { width: .28em; align-self: stretch; margin: .35em 0; border-radius: 1em; background: var(--c); }
+.hd-panel li .num { font-size: .78em; min-width: 1.5em; height: 1.5em; border-radius: 999px; display: grid; place-items: center; background: color-mix(in srgb, var(--c) 18%, #fff); color: var(--c); }
+.hd-save { display: block; margin-top: .55em; text-align: center; font-weight: 700; font-size: .9em; border-radius: .7em; padding: .55em; background: #2C3038; color: #fff; transition: background .3s ease; }
+.hd-save.done { background: #DCEFE3; color: #2E6247; }
+
+/* step caption (top left) */
+.hd-cap { position: absolute; left: 3.5%; top: 4%; z-index: 6; display: inline-flex; align-items: center; gap: .6em; background: rgba(255, 255, 255, .94); border-radius: 999px; padding: .45em 1em .45em .45em; font-weight: 700; font-size: 1.02em; box-shadow: 0 .2em .9em rgba(20, 24, 30, .12); animation: hd-cap .4s ease both; max-width: 70%; }
+@keyframes hd-cap { from { opacity: 0; transform: translateY(-.4em); } to { opacity: 1; transform: none; } }
+.hd-capn { width: 1.7em; height: 1.7em; border-radius: 50%; background: #2C3038; color: #fff; display: grid; place-items: center; font-size: .85em; flex: none; }
+
+/* reduced motion: one still frame, nothing moves */
+.hd.still *, .hd.still *::before { animation: none !important; transition: none !important; }
+@media (prefers-reduced-motion: reduce) { .hd *, .hd *::before { animation: none !important; transition: none !important; } }
+
+/* the real recording, below the fold (click to play) */
+.l-real { padding-top: 96px; display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr); gap: 48px; align-items: center; }
+.l-real-copy { display: flex; flex-direction: column; gap: 16px; }
+@media (max-width: 900px) { .l-real { grid-template-columns: 1fr; padding-top: 64px; gap: 24px; } }
+.side-below > .hd-acard { left: 0; top: .5em; transform: translateX(-50%); }
+.side-below .hd-atab { padding-left: .8em; }
+.side-below .hd-abody { padding-left: .8em; }
+.hd-hcard { width: 11.5em; }
+.hd-hcard { width: 12.5em; }
+.hd-hrow b:first-child { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.hd-hrow b:last-child { white-space: nowrap; flex: none; }
+.hd-abody { white-space: nowrap; }
+/* with motion off, the times show at full strength (they normally fade in as each route arrives) */
+.hd.still .hd-abody { opacity: 1; }
+@media (prefers-reduced-motion: reduce) { .hd .hd-abody { opacity: 1; } }
+.hd-hsub b { color: #fff; font-weight: 700; font-size: 1.12em; }
+.hd-hsub { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
