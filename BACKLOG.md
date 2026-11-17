@@ -6,6 +6,7 @@ Budget: **Google Maps Platform max US$50/month** beyond the free allowances.
 ## Next up
 
 ### Launch: owner-only steps (accounts and billing)
+**Done by the owner:** both keys restricted. There's a new server key (Routes + Places (New), no website restriction), and the browser key is locked to `settle-dun-delta.vercel.app` and localhost.
 The site is public now (Vercel Authentication was turned off), so step 1 is urgent.
 1. **Google Cloud budget and caps:** a US$50 budget with alerts at 50/90/100% (alerts only warn), plus **daily quota caps** on the Routes API and Places API (New), which actually stop spend. A start: about 350 route requests and 500 matrix elements a day, about 30 Text Search calls a day, about 500 autocomplete and Place Details calls a day.
 2. **Restrict the keys:** the browser key by website (the `*.vercel.app` address, later the domain, plus localhost) to the Maps JavaScript API and Places API (New). The server key by API: Routes API and Places API (New), plus Elevation if used.
@@ -149,3 +150,5 @@ Sources are in his overnight notes and morning report. Re-check prices before re
   5. Plan your day: the anchors fall into order in a small My day card, the day draws as one trip with the trip home settling to light grey, and it ends with "Saved · School run".
 
   It uses the owner's two house photos on charcoal cards, pauses off-screen, and shows a still frame with reduced motion. The real recording moved below the fold ("See it for real", play on click). The old drawn illustration (HeroMap) was removed.
+- **Landing hero is now a real recording** (the owner's call: the drawn animation looked less beautiful than the real app). About 22 s of the live site with real Google routes: Richmond Rd's routes drawing in, comparing with Bond St, dragging School to the top in the Anchors tab so the day draws as one trip, "Save to my days" as "School run", and back to the overview. Captured at double pixel density for sharp text, 1.1 MB. It pauses off-screen and shows a still frame with play controls under reduced motion. The drawn animation (HeroDemo), its photos, the older recording and the "See it for real" section were removed. A higher-quality copy went to the owner for Upwork.
+- **Production address:** `https://settle-dun-delta.vercel.app`. The browser key is restricted to it (plus localhost). Share that address, not the per-deploy `settle-xxxx-williamsstu99-beep.vercel.app` ones, which don't get a map with the locked key.
