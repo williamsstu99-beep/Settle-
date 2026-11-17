@@ -2,7 +2,7 @@ import { existsSync } from "node:fs";
 import path from "node:path";
 import Image from "next/image";
 import Link from "next/link";
-import { HeroMap } from "@/components/landing/HeroMap";
+import { HeroDemo } from "@/components/landing/HeroDemo";
 import { SettleMark, Wordmark } from "@/components/Logo";
 import "./landing.css";
 
@@ -58,14 +58,10 @@ export default function Landing() {
             <p className="l-small">Paste a TradeMe link or type any address.</p>
           </div>
           <div className="l-hero-art">
-            {hasDemo ? (
-              <div className="l-shot l-video">
-                <video src={DEMO} poster={has(DEMO_POSTER) ? DEMO_POSTER : undefined} autoPlay muted loop playsInline preload="metadata" aria-label="A short recording of Settle: two homes compared by their trips to work, the gym and school, with real routes on the map" />
-              </div>
-            ) : hasHeroShot ? (
+            {hasHeroShot ? (
               <div className="l-shot"><Image src={HERO} alt="Settle comparing three homes on a map, with routes to work, the gym and a friend’s place" fill sizes="(max-width: 900px) 100vw, 640px" priority /></div>
             ) : (
-              <HeroMap />
+              <HeroDemo />
             )}
           </div>
         </section>
@@ -84,6 +80,18 @@ export default function Landing() {
             </ol>
           </div>
         </section>
+
+        {hasDemo && (
+          <section className="l-wrap l-real">
+            <div className="l-real-copy">
+              <h2 className="l-h2">See it for real</h2>
+              <p className="l-lede">A 26-second recording of Settle with real Google routes: two homes, three anchors, Compare, peak traffic and the bus.</p>
+            </div>
+            <div className="l-shot l-video">
+              <video src={DEMO} poster={has(DEMO_POSTER) ? DEMO_POSTER : undefined} controls muted playsInline preload="none" aria-label="A 26-second recording of Settle comparing two homes by their real trips to work, the gym and school" />
+            </div>
+          </section>
+        )}
 
         <section id="features" className="l-wrap l-features">
           <div className="l-anchors">

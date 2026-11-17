@@ -141,3 +141,11 @@ Sources are in his overnight notes and morning report. Re-check prices before re
   - **Start fresh asks first** (owner's decision): tapping it shows "Start fresh? This clears every property, anchor and day on this device, photos included", with Clear everything or Cancel. Undo still works afterwards.
 - **Fix: "monster zoom" after reordering on a phone** (found by the owner in Messenger's browser). Reordering with the sheet at full height refit the map into the thin strip above it, zooming out to all of NZ. The map now always fits as if the sheet were at most half height, and a fit never squeezes into less than about 260px of map.
 - **Next.js 16.4.3 → 16.4.6** (and `eslint-config-next`): clears a moderate advisory (GHSA-mfr8-8qww-v76h, information disclosure via `use cache` + `unstable_cache`). Settle doesn't use those features, so it wasn't exposed. `npm audit` now finds 0 vulnerabilities.
+- **New landing hero animation** (owner's request): in place of the screen recording, a looping animation drawn in code that stays crisp at any size. Five steps:
+  1. Add the places that matter.
+  2. Add the homes.
+  3. See the real trip from each one (routes draw in colour, times count up).
+  4. Compare them ("Fastest").
+  5. Plan your day: the anchors fall into order in a small My day card, the day draws as one trip with the trip home settling to light grey, and it ends with "Saved · School run".
+
+  It uses the owner's two house photos on charcoal cards, pauses off-screen, and shows a still frame with reduced motion. The real recording moved below the fold ("See it for real", play on click). The old drawn illustration (HeroMap) was removed.
