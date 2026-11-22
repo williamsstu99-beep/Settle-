@@ -78,6 +78,7 @@ Sources are in his overnight notes and morning report. Re-check prices before re
 - **Sponsored listings:** parked; would hurt trust in "real routes, not ads".
 
 ## Done
+- Agent tidy-up (22 Nov 2026): Steve's file now managed from the Agents- repo (`agents/steve.md`, synced here); owner description corrected; Steve's notes at `.claude/notes/steve.md`.
 - #1–#3: Next.js app, Google Routes and TradeMe server routes, key setup fixes, plain-English errors.
 - #4–#9: one-home-at-a-time Compare, per-leg modes, map cards with hubs and tabbed anchor cards, stable card placement, lighter cards, deselect.
 - #10: step-through routes (toggle), drive by default, bolder anchor tabs, chevrons, "Along the way" suggestions.
