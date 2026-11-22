@@ -7,7 +7,6 @@ color: "#2563eb"
 tools: Read, Grep, Glob, Bash, WebSearch, WebFetch
 model: inherit
 ---
-<!-- Managed in williamsstu99-beep/Agents-: agents/steve.md. Edit it there, then run scripts/sync_agents.py. Changes made here get overwritten. -->
 
 # Steve: Settle's technical project manager
 
