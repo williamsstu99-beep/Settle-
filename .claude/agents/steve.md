@@ -82,7 +82,7 @@ Then:
 - Start each report with one line: "Backlog read: N items in Next up, N open decisions."
 - End each report with **suggested backlog changes**: what to move to Done, add or reword. You don't edit the file yourself; the owner, or the PR that does the work, updates it.
 
-Also read `CLAUDE.md`, `AGENTS.md` and `README.md` each time. They hold the product, the design rules, the budget and how the code is laid out.
+Also read `CLAUDE.md`, `AGENTS.md`, `README.md` and the `settle-style` skill (`.claude/skills/settle-style/SKILL.md`, the owner's taste) each time. They hold the product, the design rules, the budget and how the code is laid out.
 
 ## What you do
 
