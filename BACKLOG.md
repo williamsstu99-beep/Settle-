@@ -45,6 +45,22 @@ Include `/compare?example=1` in every post.
 ## Open decisions
 - **Launch:** on Vercel Pro (decided). Domain, timing and audience are not decided yet (a soft launch to friends and students is suggested).
 - **Day planner on the map:** check on the live site with real Google that chained routes, the trip back home (draws, then settles to light grey) and step-through look right.
+- **Game-changer shortlist (Steve + Claude, five rounds, 22 Nov 2026).** Full page: https://claude.ai/artifact/TLtqrduyvUcvngcASfeFP9
+  - New pitch: "Trade Me helps you search. Settle helps you decide, together."
+  - Top 5:
+    1. Decide together (anchors belong to people; each person's longest trip; "Nobody over 25 min"; WhatsApp preview)
+    2. True weekly cost (IRD 37c/km, AT $50 HOP cap, days a week per anchor)
+    3. Anchor packs (`?pack=middlemore`; Health NZ relocation team as the first pilot)
+    4. Your hours, not 8am (start and finish times per anchor)
+    5. Suburb guides written by hand
+  - Do first: paste or screenshot a listing; check Google's caching terms; budget guard; Vercel Analytics; real-phone test.
+  - Stu to decide:
+    - travel money with or without a sum
+    - renters or buyers first
+    - home names in share previews
+    - checking caching this week
+    - where to start (A: True cost, recommended; B: Decide together; C: test first)
+- **Google caching terms (urgent):** no permission found to cache Routes durations or polylines. The 3-day server cache may need to come out, which would roughly halve the budget's capacity (about 400–800 people a month).
 
 ## What we've learned (Steve's research, 15–16 Nov 2026)
 Sources are in his overnight notes and morning report. Re-check prices before relying on them.
@@ -65,6 +81,18 @@ Sources are in his overnight notes and morning report. Re-check prices before re
   - **Suggested order:** the Upwork case study and one referral link now, the Plus pass at about 1,000 users a month, then a widget pilot with one paying client.
 - **Draft orders cost the same as the old "new day":** each new order needs new stop-to-stop routes for every property (cached after). No new kinds of Google calls. Worth watching once people play with orders.
 - **Mobile pattern:** a three-height bottom sheet over a usable map is the standard (built, see Done). On the web the hard parts are iOS scroll chaining and drag-vs-scroll, handled in `useSheet`.
+- **From the game-changer rounds (22 Nov 2026):**
+  - **Competitors:** Trade Me now has
+    - travel-time search to saved places
+    - rent estimates (Property Insights)
+    - school zones on listings
+    - an open-home planner, AI search and a ChatGPT app
+    So don't build a rent-fair check or school zones.
+  - **Google Isochrones API:** in preview; no transit, and traffic only for "now". Not honest at Auckland peak.
+  - **AT bus punctuality figures are disputed:** RNZ logged 34% on time vs AT's 98%.
+  - **Petrol** was up 27.5% in the year to June 2026.
+  - **Health NZ** has a relocation team that helps overseas hires find rentals.
+  - **Each person opening a shared plan fetches routes again,** so several-people features raise Google spend.
 
 ## Parked (later)
 - **Duplicate a saved day** (a "save as new" while a saved day is showing).

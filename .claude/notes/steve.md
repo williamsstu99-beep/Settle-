@@ -1,3 +1,4 @@
 2026-11-22: Agent tidy-up: owner description fixed, notes file added. Last reviews (15–16 Nov) are in BACKLOG.md.
 2026-11-22: Status refreshed. Live at settle-dun-delta.vercel.app, keys locked, PR #30 (real-recording hero) open. Next for Stu: Google daily caps + budget, Vercel region/contact email/Pro, real-phone test, then soft launch.
 2026-11-22: Mobile UX review. The clutter is the sheet, not the map: about 13 always-on header controls and an open card with about 40. Ranked 10 small cuts, led by folding Along the way and one-line trips. Two choices for Stu: the header (More menu, recommended) and the selected-home view (trim now, map-first later).
+2026-11-22: Game-changer rounds 1–5 with Claude. About 40 ideas narrowed to 5: decide together, true weekly cost, anchor packs (Health NZ pilot), your hours not 8am, suburb guides. Do first: paste or screenshot, Google caching terms, budget guard. Waiting on Stu to choose where to start.
