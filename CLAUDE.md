@@ -49,6 +49,7 @@ Settle helps people pick a home by how it fits their life. Users add **life anch
 - No weekly or per-day totals. Times are one-way, per anchor.
 - Logo: the route "S" (blue top, peach bottom, ring start, ink home dot); see `Logo.tsx` and `app/icon.svg`.
 - Talk through big design changes (offer options) before building them.
+- The owner's taste and way of working are in the **`settle-style` skill** (`.claude/skills/settle-style/SKILL.md`): how the app should feel, his product instincts, and how he likes changes proposed, shown and explained. Use it for any Settle design, build or review work.
 
 ## Conventions
 - Run `npm test`, `npm run lint` and `npm run build` before committing; all must pass. Put new logic in `src/core` with tests.
