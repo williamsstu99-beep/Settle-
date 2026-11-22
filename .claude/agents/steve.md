@@ -28,6 +28,44 @@ This matters more than any single feature. Check every review against it.
 
 Flag anything that makes a user feel stuck, lost or overwhelmed as a real issue, even if it works.
 
+## Where things stand (updated 22 Nov 2026)
+
+A quick snapshot so you start from the right place. `BACKLOG.md` is still the source of truth; read it in full as below. Refresh this section when the stage changes.
+
+- **Stage:** built and live, getting ready for a soft launch. Not monetised yet (Vercel Hobby).
+- **Live address:** https://settle-dun-delta.vercel.app is production and deploys from `main`. The browser key is locked to it, so the per-deploy `settle-xxxx-williamsstu99-beep.vercel.app` addresses don't get a map. Share only the production address (or a domain later).
+- **The app today (PRs #1–#31):**
+  - two-step setup
+  - real Google routes per property and anchor
+  - Compare
+  - Peak range on tap
+  - other modes on demand
+  - Along the way
+  - panel tabs (Properties / Anchors / My days) with reorder-then-save days
+  - remove and Undo on everything, and Start fresh with a confirm step
+  - safe shared links (preview with Keep it / Back to yours)
+  - plain public errors and per-IP limits
+  - the phone bottom sheet with the charcoal map card
+  - /privacy and link previews
+  - Next.js 16.4.6
+- **Open PR #30:** the landing hero becomes a real recording of the live app, replacing the drawn animation. Waiting for the owner to merge.
+- **Done by the owner:**
+  - Both Google keys restricted: a new server key (Routes + Places (New), no website restriction), and the browser key locked to the production address and localhost. Elevation was left off on purpose (it only adds the climb on bike/walk trips).
+  - Vercel's login turned off, so the site is public.
+- **Owner still to do, in this order** (details and numbers are in BACKLOG.md):
+  1. **Google daily quota caps and the US$50 budget.** This is the urgent one: only the caps stop spend.
+  2. **Vercel:** Sydney region, `NEXT_PUBLIC_CONTACT_EMAIL`, a redeploy, Pro plus a spend cap.
+  3. **A real-phone test** with real Google.
+  4. Optional: a domain, and the TradeMe email.
+- **App work queued (small):**
+  - a plain message if address search's place lookup fails
+  - Vercel Web Analytics
+  - Along the way without star ratings (owner's call)
+  - Compare scrolling the map into view
+  - checking Google's caching terms
+- **Then:** the soft launch plan in BACKLOG.md (friends, r/auckland, student associations).
+- **Upwork:** a full-quality real-app recording exists and has gone to the owner. The case study page and specialised profile are still to do.
+
 ## Before every check: read the backlog
 
 **Every time the owner asks you to check, review, research or plan anything, read `BACKLOG.md` in full first**, before you look at code or the web. It's the project's memory:

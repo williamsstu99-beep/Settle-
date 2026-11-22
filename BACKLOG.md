@@ -8,11 +8,19 @@ Budget: **Google Maps Platform max US$50/month** beyond the free allowances.
 ### Launch: owner-only steps (accounts and billing)
 **Done by the owner:** both keys restricted. There's a new server key (Routes + Places (New), no website restriction), and the browser key is locked to `settle-dun-delta.vercel.app` and localhost.
 The site is public now (Vercel Authentication was turned off), so step 1 is urgent.
-1. **Google Cloud budget and caps:** a US$50 budget with alerts at 50/90/100% (alerts only warn), plus **daily quota caps** on the Routes API and Places API (New), which actually stop spend. A start: about 350 route requests and 500 matrix elements a day, about 30 Text Search calls a day, about 500 autocomplete and Place Details calls a day.
-2. **Restrict the keys:** the browser key by website (the `*.vercel.app` address, later the domain, plus localhost) to the Maps JavaScript API and Places API (New). The server key by API: Routes API and Places API (New), plus Elevation if used.
+1. **Google Cloud budget and caps (urgent, the site is public).**
+   - **Budget:** US$50, or about NZ$85 if billing is in NZD. Alerts at 50/90/100% of actual spend and 100% of forecast. Alerts only warn.
+   - **Daily quota caps** (these actually stop spend), from Steve's checklist:
+     - Routes: compute routes 250, route matrix elements 200
+     - Maps JavaScript map loads 400
+     - Places (New): autocomplete 400, place details 300, Search Text 30
+   - That allows about 20–25 new planners a day; viewers of shared links and the example cost far less.
+   - Caps reset at about 9pm NZ time in summer.
+   - When a cap is hit, people see "Settle has reached today's limit… try again tomorrow".
+2. ~~**Restrict the keys**~~ **Done (owner, 17 Nov).** The browser key is locked to `settle-dun-delta.vercel.app` and localhost (Maps JavaScript API + Places API (New)). The server key is new, with no website restriction (Routes API + Places API (New)). Elevation is off on purpose: it only adds the climb on bike and walk trips.
 3. **Vercel → Settings → Functions → Region: Sydney (`syd1`).** The default is Washington, D.C. (`iad1`), so every `/api/*` call from NZ crosses the Pacific twice.
 4. **Domain (optional for launch):** a `.nz` or `.co.nz` from an NZ registrar with cheap renewals (about NZ$17–36 a year). In Vercel → Settings → Domains, add the apex and `www`, copy the DNS records to the registrar, then add the domain to the browser key.
-5. **Vercel Pro** (US$20/month) before any referral link, donate button or paid pass. Hobby is non-commercial. The owner has decided to launch on Pro.
+5. **Vercel Pro** (US$20/month) before any referral link, donate button or paid pass. Also turn on **Spend Management** (about US$30, with an email alert). Hobby is non-commercial. The owner has decided to launch on Pro.
 6. **Privacy contact:** set `NEXT_PUBLIC_CONTACT_EMAIL` in Vercel (Settings → Environment Variables) and redeploy. The privacy page shows it under "Your rights". NZ's Privacy Act expects a way to get in touch.
 7. **After adding a domain, redeploy once** so link previews (`metadataBase`) use it instead of the `vercel.app` address.
 8. **TradeMe:** email api@trademe.co.nz about a Property API key for a free renter tool. Don't depend on it: the API is aimed at sellers, and buyer-side tools are "generally unsupported". Typed addresses already work.
@@ -23,7 +31,8 @@ The site is public now (Vercel Authentication was turned off), so step 1 is urge
 - **Watch the rate limits after student posts:** 20 route requests a minute per IP suits most people, but hundreds of students behind one uni address could hit it. The limiter is per server instance, so it's softer in practice. Check the Vercel logs after any AUSA or AuSM post.
 - **Check Google's caching terms** for the Routes API against the 3-day server cache and the browser cache. Location data from Directions/Geocoding may be cached up to 30 days, and place IDs may be cached. No Routes-specific clause was found yet.
 - **Test on real phones** (also: tabs, Start fresh, the Undo message, and the map refitting when the sheet changes height) with real Google: iPhone Safari (address bar, keyboard over forms, safe areas) and Android Chrome. Setup, Compare, a shared link opened on a second phone, a TradeMe link.
-- **Turn on Vercel Web Analytics** (no cookies) to count visitors.
+- **Turn on Vercel Web Analytics** (no cookies) to count visitors. This needs the `@vercel/analytics` component added in a small PR, not just the dashboard toggle.
+- **Plain message if address search fails:** `PlaceSearch` shows the raw error if fetching place details fails (e.g. when the Place Details cap is hit). Show "Address search isn't working right now" instead. Size S.
 
 ### Soft launch plan (suggested by Steve, all free)
 1. Friends and their flatmates.
@@ -153,3 +162,4 @@ Sources are in his overnight notes and morning report. Re-check prices before re
   It uses the owner's two house photos on charcoal cards, pauses off-screen, and shows a still frame with reduced motion. The real recording moved below the fold ("See it for real", play on click). The old drawn illustration (HeroMap) was removed.
 - **Landing hero is now a real recording** (the owner's call: the drawn animation looked less beautiful than the real app). About 22 s of the live site with real Google routes: Richmond Rd's routes drawing in, comparing with Bond St, dragging School to the top in the Anchors tab so the day draws as one trip, "Save to my days" as "School run", and back to the overview. Captured at double pixel density for sharp text, 1.1 MB. It pauses off-screen and shows a still frame with play controls under reduced motion. The drawn animation (HeroDemo), its photos, the older recording and the "See it for real" section were removed. A higher-quality copy went to the owner for Upwork.
 - **Production address:** `https://settle-dun-delta.vercel.app`. The browser key is restricted to it (plus localhost). Share that address, not the per-deploy `settle-xxxx-williamsstu99-beep.vercel.app` ones, which don't get a map with the locked key.
+- **Steve's file has a "Where things stand" snapshot** (22 Nov). The backlog also has Steve's exact daily cap numbers, the owner's finished key setup, Vercel Spend Management, and two small app fixes he found.
