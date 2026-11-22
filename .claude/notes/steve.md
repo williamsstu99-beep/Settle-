@@ -1,2 +1,3 @@
 2026-11-22: Agent tidy-up: owner description fixed, notes file added. Last reviews (15–16 Nov) are in BACKLOG.md.
 2026-11-22: Status refreshed. Live at settle-dun-delta.vercel.app, keys locked, PR #30 (real-recording hero) open. Next for Stu: Google daily caps + budget, Vercel region/contact email/Pro, real-phone test, then soft launch.
+2026-11-22: Mobile UX review. The clutter is the sheet, not the map: about 13 always-on header controls and an open card with about 40. Ranked 10 small cuts, led by folding Along the way and one-line trips. Two choices for Stu: the header (More menu, recommended) and the selected-home view (trim now, map-first later).
